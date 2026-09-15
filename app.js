@@ -157,15 +157,27 @@ $("#btn-create-foyer").addEventListener("click", async ()=>{
   hide(errBox);
   if(!nom){ errBox.textContent = "Donnez un nom à votre foyer."; show(errBox); return; }
 
+  console.log("DEBUG currentUser:", currentUser);
+  console.log("DEBUG session:", (await sb.auth.getSession()).data.session);
+  console.log("DEBUG supabase url:", SUPABASE_URL);
+
   const code = genCode();
   const { data: foyer, error } = await sb.from("foyers")
     .insert({ nom, code_invitation: code, cree_par: currentUser.id })
     .select().single();
-  if(error){ errBox.textContent = error.message; show(errBox); return; }
+  if(error){
+    errBox.innerHTML = `<b>${error.message}</b><br>code: ${error.code||'-'}<br>details: ${error.details||'-'}<br>hint: ${error.hint||'-'}<br>user connecté: ${currentUser ? currentUser.id : 'AUCUN'}`;
+    show(errBox);
+    return;
+  }
 
   const { error: err2 } = await sb.from("foyer_membres")
     .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "admin" });
-  if(err2){ errBox.textContent = err2.message; show(errBox); return; }
+  if(err2){
+    errBox.innerHTML = `<b>${err2.message}</b><br>code: ${err2.code||'-'}<br>details: ${err2.details||'-'}<br>hint: ${err2.hint||'-'}`;
+    show(errBox);
+    return;
+  }
 
   await sb.from("listes_courses").insert({ foyer_id: foyer.id, nom: "Liste de courses" });
 
