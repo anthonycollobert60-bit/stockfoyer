@@ -3,8 +3,8 @@
 // ⚠️ Remplacer les deux valeurs ci-dessous par celles de ton
 //    projet Supabase (Project Settings > API).
 // ============================================================
-const SUPABASE_URL = "https://VOTRE-PROJET.supabase.co";
-const SUPABASE_ANON_KEY = "VOTRE-CLE-ANON-PUBLIC";
+const SUPABASE_URL = "https://puktisrifmoexclpzmbl.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1a3Rpc3JpZm1vZXhjbHB6bWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjkyMTQsImV4cCI6MjEwNDkwNTIxNH0.xrhXHKHUqEiTwtDN751SFh6z4Acrm5f0g7Yy_Puev_k";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
