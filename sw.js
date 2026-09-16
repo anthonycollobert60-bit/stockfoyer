@@ -1,4 +1,4 @@
-const CACHE_NAME = "stockfoyer-v1";
+const CACHE_NAME = "stockfoyer-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,14 +24,22 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Network-first pour tout ce qui touche Supabase / Open Food Facts (données live),
-// cache-first pour les fichiers statiques de l'app.
+// Network-first pour TOUT (sauf Supabase / Open Food Facts, laissés en direct) :
+// on essaie toujours de récupérer la dernière version en ligne, et on ne se
+// rabat sur le cache que si le téléphone est hors-ligne. Ça évite qu'une
+// icône, un fichier app.js ou un manifest modifié reste bloqué en cache.
 self.addEventListener("fetch", (event) => {
   const url = event.request.url;
   if (url.includes("supabase.co") || url.includes("openfoodfacts.org")) {
     return; // laisser passer directement au réseau
   }
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
