@@ -157,36 +157,15 @@ $("#btn-create-foyer").addEventListener("click", async ()=>{
   hide(errBox);
   if(!nom){ errBox.textContent = "Donnez un nom à votre foyer."; show(errBox); return; }
 
-  const { data: sessionData } = await sb.auth.getSession();
-  const session = sessionData.session;
-
-  let tokenInfo = "PAS DE SESSION / PAS DE TOKEN";
-  if(session && session.access_token){
-    try{
-      const payload = JSON.parse(atob(session.access_token.split('.')[1]));
-      const expDate = new Date(payload.exp * 1000);
-      const expired = expDate.getTime() < Date.now();
-      tokenInfo = `role: ${payload.role} | sub: ${payload.sub} | expire le: ${expDate.toLocaleString('fr-FR')} | ${expired ? 'EXPIRÉ ⚠️' : 'valide ✅'}`;
-    }catch(e){ tokenInfo = "Erreur décodage token: " + e.message; }
-  }
-
   const code = genCode();
   const { data: foyer, error } = await sb.from("foyers")
     .insert({ nom, code_invitation: code, cree_par: currentUser.id })
     .select().single();
-  if(error){
-    errBox.innerHTML = `<b>${error.message}</b><br>code: ${error.code||'-'}<br>details: ${error.details||'-'}<br>hint: ${error.hint||'-'}<br>user connecté: ${currentUser ? currentUser.id : 'AUCUN'}<br><br><b>Token:</b><br>${tokenInfo}`;
-    show(errBox);
-    return;
-  }
+  if(error){ errBox.textContent = error.message; show(errBox); return; }
 
   const { error: err2 } = await sb.from("foyer_membres")
     .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "admin" });
-  if(err2){
-    errBox.innerHTML = `<b>${err2.message}</b><br>code: ${err2.code||'-'}<br>details: ${err2.details||'-'}<br>hint: ${err2.hint||'-'}`;
-    show(errBox);
-    return;
-  }
+  if(err2){ errBox.textContent = err2.message; show(errBox); return; }
 
   await sb.from("listes_courses").insert({ foyer_id: foyer.id, nom: "Liste de courses" });
 
