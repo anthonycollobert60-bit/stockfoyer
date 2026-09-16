@@ -6,7 +6,27 @@
 const SUPABASE_URL = "https://puktisrifmoexclpzmbl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1a3Rpc3JpZm1vZXhjbHB6bWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjkyMTQsImV4cCI6MjEwNDkwNTIxNH0.xrhXHKHUqEiTwtDN751SFh6z4Acrm5f0g7Yy_Puev_k";
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let rememberMe = true;
+const customStorage = {
+  getItem: (key) => localStorage.getItem(key) ?? sessionStorage.getItem(key),
+  setItem: (key, value) => {
+    if(rememberMe){
+      localStorage.setItem(key, value);
+      sessionStorage.removeItem(key);
+    } else {
+      sessionStorage.setItem(key, value);
+      localStorage.removeItem(key);
+    }
+  },
+  removeItem: (key) => {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
+};
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: customStorage, persistSession: true, autoRefreshToken: true }
+});
 
 // ---------------- État global ----------------
 let currentUser = null;
@@ -114,9 +134,17 @@ $("#tab-signup").addEventListener("click", ()=>{
   $("#auth-submit").textContent = "Créer mon compte";
 });
 
+$("#toggle-password").addEventListener("click", ()=>{
+  const input = $("#auth-password");
+  const btn = $("#toggle-password");
+  if(input.type === "password"){ input.type = "text"; btn.textContent = "🙈"; }
+  else { input.type = "password"; btn.textContent = "👁️"; }
+});
+
 $("#auth-submit").addEventListener("click", async ()=>{
   const email = $("#auth-email").value.trim();
   const password = $("#auth-password").value;
+  rememberMe = $("#auth-remember").checked;
   const errBox = $("#auth-error");
   hide(errBox);
   if(!email || !password){

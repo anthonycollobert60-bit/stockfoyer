@@ -232,8 +232,15 @@
       </div>
       <div class="field">
         <label>Mot de passe</label>
-        <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password">
+        <div style="position:relative;">
+          <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:44px;">
+          <button type="button" id="toggle-password" class="icon-btn" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);">👁️</button>
+        </div>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink);cursor:pointer;">
+        <input type="checkbox" id="auth-remember" checked style="width:18px;height:18px;">
+        Rester connecté
+      </label>
       <button id="auth-submit" class="btn btn-primary btn-block">Se connecter</button>
     </div>
   </section>
