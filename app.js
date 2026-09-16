@@ -704,11 +704,27 @@ $("#btn-settings").addEventListener("click", ()=>{
     <h2>Paramètres du foyer</h2>
     <p style="color:var(--ink-soft);">Foyer : <b>${currentFoyer.nom}</b></p>
     <label>Code d'invitation à partager</label>
-    <div class="code-display" style="margin-bottom:16px;">${currentFoyer.code_invitation}</div>
+    <div class="code-display" style="margin-bottom:10px;">${currentFoyer.code_invitation}</div>
+    <button class="btn btn-primary btn-block" id="btn-partager-code" style="margin-bottom:16px;">📤 Partager le code</button>
     <button class="btn btn-secondary btn-block" id="btn-quitter-foyer" style="margin-bottom:10px;">Quitter ce foyer</button>
     ${currentFoyer.role === 'admin' ? `<button class="btn btn-danger btn-block" id="btn-supprimer-foyer" style="margin-bottom:10px;">Supprimer définitivement ce foyer</button>` : ''}
     <button class="btn btn-danger btn-block" id="btn-logout">Se déconnecter</button>
   `);
+  $("#btn-partager-code").addEventListener("click", async ()=>{
+    const message = `Rejoins mon foyer "${currentFoyer.nom}" sur StockFoyer 🥫\nCode d'invitation : ${currentFoyer.code_invitation}\n\nOuvre l'app et entre ce code dans "Rejoindre un foyer existant".`;
+    if(navigator.share){
+      try{
+        await navigator.share({ title: "Rejoins mon foyer StockFoyer", text: message });
+      }catch(e){ /* l'utilisateur a annulé le partage, on ignore */ }
+    } else {
+      try{
+        await navigator.clipboard.writeText(message);
+        toast("Message copié — colle-le où tu veux 📋");
+      }catch(e){
+        toast("Code : " + currentFoyer.code_invitation);
+      }
+    }
+  });
   $("#btn-logout").addEventListener("click", async ()=>{
     closeSheet();
     await sb.auth.signOut();
