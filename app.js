@@ -99,7 +99,7 @@ async function afterLogin(){
   currentUser = (await sb.auth.getUser()).data.user;
   const { data: membre } = await sb
     .from("foyer_membres")
-    .select("role, foyers(id, nom, code_invitation, photo_url)")
+    .select("role, foyers(id, nom, code_invitation, photo_url, bebe_household_id, bebe_child_id)")
     .eq("user_id", currentUser.id)
     .maybeSingle();
 
@@ -233,9 +233,20 @@ async function loadCategories(){
   categories = data || [];
 }
 
+let diaperStock = [];
+
 async function loadAll(){
-  await Promise.all([loadProduits(), loadListe(), loadHistorique()]);
+  await Promise.all([loadProduits(), loadListe(), loadHistorique(), loadDiaperStock()]);
   render();
+}
+
+async function loadDiaperStock(){
+  if(!currentFoyer.bebe_household_id){ diaperStock = []; return; }
+  const { data } = await sb.from("diaper_stock")
+    .select("*")
+    .eq("household_id", currentFoyer.bebe_household_id)
+    .order("category").order("size");
+  diaperStock = data || [];
 }
 
 async function loadProduits(){
@@ -338,17 +349,50 @@ function renderStock(){
     for(const p of byCat["none"]) html += prodCardHTML(p);
     html += `</div>`;
   }
+
+  if(diaperStock.length){
+    html += `<div class="cat-group"><div class="cat-label">🍼 Carnet bébé</div>`;
+    for(const d of diaperStock) html += diaperCardHTML(d);
+    html += `</div>`;
+  }
+
   content.innerHTML = html;
 
   $$(".qty-btn").forEach(btn=>{
     btn.addEventListener("click", ()=> handleQtyClick(btn.dataset.id, btn.dataset.dir, parseFloat(btn.dataset.step||"1")));
   });
-  $$(".prod-card").forEach(card=>{
+  $$(".diaper-qty-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=> handleDiaperQtyClick(btn.dataset.id, parseInt(btn.dataset.dir)));
+  });
+  $$(".prod-card[data-id]").forEach(card=>{
     card.addEventListener("click", (e)=>{
       if(e.target.closest(".qty-btn")) return;
       openEditProduct(card.dataset.id);
     });
   });
+}
+
+function diaperCardHTML(d){
+  return `
+    <div class="prod-card">
+      <div class="prod-info">
+        <p class="prod-name">${d.category} — taille ${d.size}</p>
+        <p class="prod-qty"><b>${d.quantity}</b> pièce${d.quantity>1?'s':''}</p>
+      </div>
+      <div class="qty-controls">
+        <button class="qty-btn minus diaper-qty-btn" data-id="${d.id}" data-dir="-1">–</button>
+        <button class="qty-btn plus diaper-qty-btn" data-id="${d.id}" data-dir="1">+</button>
+      </div>
+    </div>`;
+}
+
+async function handleDiaperQtyClick(id, dir){
+  const d = diaperStock.find(x=>x.id===id);
+  if(!d) return;
+  const nouvelleQte = Math.max(0, d.quantity + dir);
+  await sb.from("diaper_stock").update({ quantity: nouvelleQte }).eq("id", id);
+  d.quantity = nouvelleQte;
+  render();
 }
 
 function prodCardHTML(p){
@@ -706,10 +750,29 @@ $("#btn-settings").addEventListener("click", ()=>{
     <label>Code d'invitation à partager</label>
     <div class="code-display" style="margin-bottom:10px;">${currentFoyer.code_invitation}</div>
     <button class="btn btn-primary btn-block" id="btn-partager-code" style="margin-bottom:16px;">📤 Partager le code</button>
+
+    <label>Code du foyer "Carnet bébé" (optionnel)</label>
+    <input id="bebe-code" type="text" placeholder="Code du carnet bébé" value="${currentFoyer.bebe_household_id || ''}" style="margin-bottom:8px;">
+    <button class="btn btn-secondary btn-block" id="btn-lier-bebe" style="margin-bottom:16px;">🍼 Relier au carnet bébé</button>
     <button class="btn btn-secondary btn-block" id="btn-quitter-foyer" style="margin-bottom:10px;">Quitter ce foyer</button>
     ${currentFoyer.role === 'admin' ? `<button class="btn btn-danger btn-block" id="btn-supprimer-foyer" style="margin-bottom:10px;">Supprimer définitivement ce foyer</button>` : ''}
     <button class="btn btn-danger btn-block" id="btn-logout">Se déconnecter</button>
   `);
+  $("#btn-lier-bebe").addEventListener("click", async ()=>{
+    const code = $("#bebe-code").value.trim();
+    if(!code){ toast("Entre le code de foyer du carnet bébé."); return; }
+    const { data: enfants } = await sb.from("children")
+      .select("id").eq("household_id", code).order("created_at", { ascending:true }).limit(1);
+    const childId = enfants && enfants[0] ? enfants[0].id : null;
+    const { error } = await sb.from("foyers")
+      .update({ bebe_household_id: code, bebe_child_id: childId }).eq("id", currentFoyer.id);
+    if(error){ toast("Erreur : " + error.message); return; }
+    currentFoyer.bebe_household_id = code;
+    currentFoyer.bebe_child_id = childId;
+    closeSheet();
+    toast("Carnet bébé relié ✅");
+    await loadAll();
+  });
   $("#btn-partager-code").addEventListener("click", async ()=>{
     const message = `Rejoins mon foyer "${currentFoyer.nom}" sur StockFoyer 🥫\nCode d'invitation : ${currentFoyer.code_invitation}\n\nOuvre l'app et entre ce code dans "Rejoindre un foyer existant".`;
     if(navigator.share){
