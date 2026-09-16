@@ -53,6 +53,13 @@
     border-bottom:1px solid var(--border);
   }
   .topbar img{width:34px;height:34px;border-radius:9px;}
+  .avatar-wrap{position:relative;cursor:pointer;flex-shrink:0;}
+  .avatar-wrap img{width:34px;height:34px;border-radius:9px;object-fit:cover;display:block;}
+  .avatar-badge{
+    position:absolute;bottom:-4px;right:-4px;background:var(--green);color:#fff;
+    font-size:9px;width:16px;height:16px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;border:2px solid var(--cream);
+  }
   .topbar h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-0.01em;flex:1;}
   .icon-btn{
     background:none;border:none;cursor:pointer;
@@ -272,10 +279,14 @@
   <!-- ============ MAIN APP ============ -->
   <div id="screen-main" class="hidden">
     <div class="topbar">
-      <img src="icons/icon-192.png" alt="">
+      <div class="avatar-wrap" id="avatar-wrap" title="Changer la photo du foyer">
+        <img src="icons/icon-192.png" alt="" id="foyer-avatar">
+        <span class="avatar-badge">✏️</span>
+      </div>
       <h1 id="foyer-title">Mon foyer</h1>
       <button class="icon-btn" id="btn-settings" title="Paramètres">⚙️</button>
     </div>
+    <input type="file" id="avatar-file-input" accept="image/*" class="hidden">
 
     <main>
       <!-- STOCK VIEW -->

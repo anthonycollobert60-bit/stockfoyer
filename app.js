@@ -99,7 +99,7 @@ async function afterLogin(){
   currentUser = (await sb.auth.getUser()).data.user;
   const { data: membre } = await sb
     .from("foyer_membres")
-    .select("role, foyers(id, nom, code_invitation)")
+    .select("role, foyers(id, nom, code_invitation, photo_url)")
     .eq("user_id", currentUser.id)
     .maybeSingle();
 
@@ -111,6 +111,7 @@ async function afterLogin(){
   }
   currentFoyer = { ...membre.foyers, role: membre.role };
   $("#foyer-title").textContent = currentFoyer.nom;
+  $("#foyer-avatar").src = currentFoyer.photo_url || "icons/icon-192.png";
   show($("#screen-main"));
   await loadCategories();
   await loadAll();
@@ -732,6 +733,32 @@ $("#btn-settings").addEventListener("click", ()=>{
       show($("#screen-foyer"));
     });
   }
+});
+
+// ---------------- Photo du foyer ----------------
+$("#avatar-wrap").addEventListener("click", ()=> $("#avatar-file-input").click());
+
+$("#avatar-file-input").addEventListener("change", async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = ""; // permet de re-sélectionner le même fichier plus tard
+  if(!file) return;
+  if(!file.type.startsWith("image/")){ toast("Choisis une image."); return; }
+  if(file.size > 5 * 1024 * 1024){ toast("Image trop lourde (max 5 Mo)."); return; }
+
+  toast("Envoi de la photo…");
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${currentFoyer.id}-${Date.now()}.${ext}`;
+
+  const { error: upErr } = await sb.storage.from("foyer-photos").upload(path, file, { upsert: true });
+  if(upErr){ toast("Erreur d'envoi : " + upErr.message); return; }
+
+  const { data: pub } = sb.storage.from("foyer-photos").getPublicUrl(path);
+  const { error: updErr } = await sb.from("foyers").update({ photo_url: pub.publicUrl }).eq("id", currentFoyer.id);
+  if(updErr){ toast("Erreur : " + updErr.message); return; }
+
+  currentFoyer.photo_url = pub.publicUrl;
+  $("#foyer-avatar").src = pub.publicUrl;
+  toast("Photo mise à jour ✅");
 });
 
 // ---------------- PWA install / service worker ----------------
