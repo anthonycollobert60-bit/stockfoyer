@@ -3,8 +3,8 @@
 // ⚠️ Remplacer les deux valeurs ci-dessous par celles de ton
 //    projet Supabase (Project Settings > API).
 // ============================================================
-const SUPABASE_URL = "https://aldeibduryhllfuwysvb.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsZGVpYmR1cnlobGxmdXd5c3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNzM0MjAsImV4cCI6MjEwMzk0OTQyMH0.WhBkxbRQxZvdF8dqrw9Q7MEiohaK8wnuQdJ6FMzn9eE";
+const SUPABASE_URL = "https://puktisrifmoexclpzmbl.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1a3Rpc3JpZm1vZXhjbHB6bWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjkyMTQsImV4cCI6MjEwNDkwNTIxNH0.xrhXHKHUqEiTwtDN751SFh6z4Acrm5f0g7Yy_Puev_k";
 
 let rememberMe = true;
 const customStorage = {
@@ -324,7 +324,7 @@ function renderStock(){
     </div>` : "";
 
   const content = $("#stock-content");
-  if(produits.length === 0){
+  if(produits.length === 0 && diaperStock.length === 0){
     content.innerHTML = `<div class="empty-state"><span class="ic">📦</span>Aucun produit pour l'instant.<br>Ajoutez-en un avec le bouton "+".</div>`;
     return;
   }
