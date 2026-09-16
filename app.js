@@ -69,6 +69,7 @@ async function init(){
 sb.auth.onAuthStateChange((event, session)=>{
   if(event === "SIGNED_OUT"){
     currentUser = null; currentFoyer = null;
+    closeSheet();
     hide($("#screen-main")); hide($("#screen-foyer"));
     show($("#screen-auth"));
   }
@@ -675,9 +676,34 @@ $("#btn-settings").addEventListener("click", ()=>{
     <p style="color:var(--ink-soft);">Foyer : <b>${currentFoyer.nom}</b></p>
     <label>Code d'invitation à partager</label>
     <div class="code-display" style="margin-bottom:16px;">${currentFoyer.code_invitation}</div>
+    <button class="btn btn-secondary btn-block" id="btn-quitter-foyer" style="margin-bottom:10px;">Quitter ce foyer</button>
+    ${currentFoyer.role === 'admin' ? `<button class="btn btn-danger btn-block" id="btn-supprimer-foyer" style="margin-bottom:10px;">Supprimer définitivement ce foyer</button>` : ''}
     <button class="btn btn-danger btn-block" id="btn-logout">Se déconnecter</button>
   `);
-  $("#btn-logout").addEventListener("click", ()=> sb.auth.signOut());
+  $("#btn-logout").addEventListener("click", async ()=>{
+    closeSheet();
+    await sb.auth.signOut();
+  });
+  $("#btn-quitter-foyer").addEventListener("click", async ()=>{
+    if(!confirm("Quitter ce foyer ? Tu pourras en rejoindre un autre ou en recréer un ensuite.")) return;
+    await sb.from("foyer_membres").delete().eq("user_id", currentUser.id).eq("foyer_id", currentFoyer.id);
+    closeSheet();
+    currentFoyer = null;
+    hide($("#screen-main"));
+    show($("#screen-foyer"));
+  });
+  const btnSupprimer = $("#btn-supprimer-foyer");
+  if(btnSupprimer){
+    btnSupprimer.addEventListener("click", async ()=>{
+      if(!confirm("Supprimer définitivement ce foyer ? Tous les produits, le stock, les listes et l'historique seront perdus pour tous les membres. Cette action est irréversible.")) return;
+      const { error } = await sb.from("foyers").delete().eq("id", currentFoyer.id);
+      if(error){ toast("Erreur : " + error.message); return; }
+      closeSheet();
+      currentFoyer = null;
+      hide($("#screen-main"));
+      show($("#screen-foyer"));
+    });
+  }
 });
 
 // ---------------- PWA install / service worker ----------------
