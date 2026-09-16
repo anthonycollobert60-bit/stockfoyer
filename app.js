@@ -197,7 +197,23 @@ $("#btn-create-foyer").addEventListener("click", async ()=>{
     .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "admin" });
   if(err2){ errBox.textContent = err2.message; show(errBox); return; }
 
-  await sb.from("listes_courses").insert({ foyer_id: foyer.id, nom: "Liste de courses" });
+  const { error: err3 } = await sb.from("listes_courses").insert({ foyer_id: foyer.id, nom: "Liste de courses" });
+
+  // Vérification : est-ce que le foyer + le membre sont bien lisibles
+  // avant de continuer, pour éviter de revenir silencieusement à cet écran.
+  const { data: verif, error: errVerif } = await sb.from("foyer_membres")
+    .select("role, foyers(id, nom)")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if(errVerif || !verif){
+    errBox.innerHTML = `Le foyer a été créé mais n'est pas relisible juste après.<br>
+      erreur listes_courses: ${err3 ? err3.message : 'aucune'}<br>
+      erreur vérification: ${errVerif ? errVerif.message : 'aucune'}<br>
+      résultat vérification: ${verif ? JSON.stringify(verif) : 'vide'}`;
+    show(errBox);
+    return;
+  }
 
   hide($("#screen-foyer"));
   show($("#loading-screen"));
