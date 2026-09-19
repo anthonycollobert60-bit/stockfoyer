@@ -3,8 +3,8 @@
 // ⚠️ Remplacer les deux valeurs ci-dessous par celles de ton
 //    projet Supabase (Project Settings > API).
 // ============================================================
-const SUPABASE_URL = "https://aldeibduryhllfuwysvb.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsZGVpYmR1cnlobGxmdXd5c3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNzM0MjAsImV4cCI6MjEwMzk0OTQyMH0.WhBkxbRQxZvdF8dqrw9Q7MEiohaK8wnuQdJ6FMzn9eE";
+const SUPABASE_URL = "https://puktisrifmoexclpzmbl.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1a3Rpc3JpZm1vZXhjbHB6bWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzMjkyMTQsImV4cCI6MjEwNDkwNTIxNH0.xrhXHKHUqEiTwtDN751SFh6z4Acrm5f0g7Yy_Puev_k";
 
 let rememberMe = true;
 const customStorage = {
@@ -807,10 +807,11 @@ $("#btn-settings").addEventListener("click", ()=>{
     await loadAll();
   });
   $("#btn-partager-code").addEventListener("click", async ()=>{
-    const message = `Rejoins mon foyer "${currentFoyer.nom}" sur StockFoyer 🥫\nCode d'invitation : ${currentFoyer.code_invitation}\n\nOuvre l'app et entre ce code dans "Rejoindre un foyer existant".`;
+    const appUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, "");
+    const message = `Rejoins mon foyer "${currentFoyer.nom}" sur StockFoyer 🥫\n\nSi tu n'as pas encore l'appli, ouvre ce lien :\n${appUrl}\n\nUne fois dedans, entre ce code d'invitation :\n${currentFoyer.code_invitation}\n\n(dans "Rejoindre un foyer existant")`;
     if(navigator.share){
       try{
-        await navigator.share({ title: "Rejoins mon foyer StockFoyer", text: message });
+        await navigator.share({ title: "Rejoins mon foyer StockFoyer", text: message, url: appUrl });
       }catch(e){ /* l'utilisateur a annulé le partage, on ignore */ }
     } else {
       try{
