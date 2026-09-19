@@ -97,13 +97,21 @@ sb.auth.onAuthStateChange((event, session)=>{
 
 async function afterLogin(){
   currentUser = (await sb.auth.getUser()).data.user;
-  const { data: membre } = await sb
+  const { data: membre, error: membreErr } = await sb
     .from("foyer_membres")
     .select("role, foyers(id, nom, code_invitation, photo_url, bebe_household_id, bebe_child_id)")
     .eq("user_id", currentUser.id)
     .maybeSingle();
 
   hide($("#loading-screen"));
+
+  if(membreErr){
+    show($("#screen-foyer"));
+    const errBox = $("#foyer-error");
+    errBox.textContent = "Erreur de chargement du foyer : " + membreErr.message;
+    show(errBox);
+    return;
+  }
 
   if(!membre){
     show($("#screen-foyer"));
@@ -187,37 +195,40 @@ $("#btn-create-foyer").addEventListener("click", async ()=>{
   hide(errBox);
   if(!nom){ errBox.textContent = "Donnez un nom à votre foyer."; show(errBox); return; }
 
-  const code = genCode();
-  const { data: foyer, error } = await sb.from("foyers")
-    .insert({ nom, code_invitation: code, cree_par: currentUser.id })
-    .select().single();
-  if(error){ errBox.textContent = error.message; show(errBox); return; }
+  try{
+    const code = genCode();
+    const { data: foyer, error } = await sb.from("foyers")
+      .insert({ nom, code_invitation: code, cree_par: currentUser.id })
+      .select().single();
+    if(error){ errBox.textContent = "[foyers] " + error.message; show(errBox); return; }
 
-  const { error: err2 } = await sb.from("foyer_membres")
-    .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "admin" });
-  if(err2){ errBox.textContent = err2.message; show(errBox); return; }
+    const { error: err2 } = await sb.from("foyer_membres")
+      .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "admin" });
+    if(err2){ errBox.textContent = "[foyer_membres] " + err2.message; show(errBox); return; }
 
-  const { error: err3 } = await sb.from("listes_courses").insert({ foyer_id: foyer.id, nom: "Liste de courses" });
+    const { error: err3 } = await sb.from("listes_courses").insert({ foyer_id: foyer.id, nom: "Liste de courses" });
 
-  // Vérification : est-ce que le foyer + le membre sont bien lisibles
-  // avant de continuer, pour éviter de revenir silencieusement à cet écran.
-  const { data: verif, error: errVerif } = await sb.from("foyer_membres")
-    .select("role, foyers(id, nom)")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
+    const { data: verif, error: errVerif } = await sb.from("foyer_membres")
+      .select("role, foyers(id, nom)")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
 
-  if(errVerif || !verif){
-    errBox.innerHTML = `Le foyer a été créé mais n'est pas relisible juste après.<br>
-      erreur listes_courses: ${err3 ? err3.message : 'aucune'}<br>
-      erreur vérification: ${errVerif ? errVerif.message : 'aucune'}<br>
-      résultat vérification: ${verif ? JSON.stringify(verif) : 'vide'}`;
+    if(errVerif || !verif){
+      errBox.innerHTML = `Le foyer a été créé mais n'est pas relisible juste après.<br>
+        erreur listes_courses: ${err3 ? err3.message : 'aucune'}<br>
+        erreur vérification: ${errVerif ? errVerif.message : 'aucune'}<br>
+        résultat vérification: ${verif ? JSON.stringify(verif) : 'vide'}`;
+      show(errBox);
+      return;
+    }
+
+    hide($("#screen-foyer"));
+    show($("#loading-screen"));
+    await afterLogin();
+  }catch(ex){
+    errBox.innerHTML = `<b>Erreur inattendue (probablement réseau/connexion) :</b><br>${ex.message || ex}<br><br>URL utilisée : ${SUPABASE_URL}`;
     show(errBox);
-    return;
   }
-
-  hide($("#screen-foyer"));
-  show($("#loading-screen"));
-  await afterLogin();
 });
 
 $("#btn-join-foyer").addEventListener("click", async ()=>{
@@ -226,17 +237,23 @@ $("#btn-join-foyer").addEventListener("click", async ()=>{
   hide(errBox);
   if(!code){ errBox.textContent = "Entrez un code d'invitation."; show(errBox); return; }
 
-  const { data: foyer, error } = await sb.from("foyers")
-    .select("id, nom").eq("code_invitation", code).maybeSingle();
-  if(error || !foyer){ errBox.textContent = "Code introuvable."; show(errBox); return; }
+  try{
+    const { data: foyer, error } = await sb.from("foyers")
+      .select("id, nom").eq("code_invitation", code).maybeSingle();
+    if(error){ errBox.textContent = "[recherche] " + error.message; show(errBox); return; }
+    if(!foyer){ errBox.textContent = "Code introuvable."; show(errBox); return; }
 
-  const { error: err2 } = await sb.from("foyer_membres")
-    .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "membre" });
-  if(err2){ errBox.textContent = err2.message; show(errBox); return; }
+    const { error: err2 } = await sb.from("foyer_membres")
+      .insert({ foyer_id: foyer.id, user_id: currentUser.id, role: "membre" });
+    if(err2){ errBox.textContent = "[foyer_membres] " + err2.message; show(errBox); return; }
 
-  hide($("#screen-foyer"));
-  show($("#loading-screen"));
-  await afterLogin();
+    hide($("#screen-foyer"));
+    show($("#loading-screen"));
+    await afterLogin();
+  }catch(ex){
+    errBox.innerHTML = `<b>Erreur inattendue (probablement réseau/connexion) :</b><br>${ex.message || ex}<br><br>URL utilisée : ${SUPABASE_URL}`;
+    show(errBox);
+  }
 });
 
 $("#btn-logout-foyer").addEventListener("click", ()=> sb.auth.signOut());
