@@ -811,7 +811,7 @@ $("#btn-settings").addEventListener("click", ()=>{
     const message = `Rejoins mon foyer "${currentFoyer.nom}" sur StockFoyer 🥫\n\nSi tu n'as pas encore l'appli, ouvre ce lien :\n${appUrl}\n\nUne fois dedans, entre ce code d'invitation :\n${currentFoyer.code_invitation}\n\n(dans "Rejoindre un foyer existant")`;
     if(navigator.share){
       try{
-        await navigator.share({ title: "Rejoins mon foyer StockFoyer", text: message, url: appUrl });
+        await navigator.share({ title: "Rejoins mon foyer StockFoyer", text: message });
       }catch(e){ /* l'utilisateur a annulé le partage, on ignore */ }
     } else {
       try{
