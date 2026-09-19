@@ -3,7 +3,7 @@
 // ⚠️ Remplacer les deux valeurs ci-dessous par celles de ton
 //    projet Supabase (Project Settings > API).
 // ============================================================
-const SUPABASE_URL = "https://aldeibduryhllfuwysvb.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://aldeibduryhllfuwysvb.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsZGVpYmR1cnlobGxmdXd5c3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNzM0MjAsImV4cCI6MjEwMzk0OTQyMH0.WhBkxbRQxZvdF8dqrw9Q7MEiohaK8wnuQdJ6FMzn9eE";
 
 let rememberMe = true;
