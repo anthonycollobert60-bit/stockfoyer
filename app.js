@@ -351,6 +351,9 @@ let stockFilter = "all";
 
 function renderCatFilters(){
   const zone = $("#cat-filter-zone");
+  const existingRow = zone.querySelector(".filter-row");
+  const scrollLeft = existingRow ? existingRow.scrollLeft : 0;
+
   const bebeCat = categories.find(c => c.nom === "Bébé");
   let pills = `<button class="filter-pill ${stockFilter==='all'?'active':''}" data-filter="all">Tous</button>`;
   for(const cat of categories){
@@ -360,6 +363,10 @@ function renderCatFilters(){
     pills += `<button class="filter-pill ${stockFilter==='bebe'?'active':''}" data-filter="bebe">🍼 Bébé</button>`;
   }
   zone.innerHTML = `<div class="filter-row">${pills}</div>`;
+
+  const newRow = zone.querySelector(".filter-row");
+  if(newRow) newRow.scrollLeft = scrollLeft;
+
   $$(".filter-pill").forEach(btn=>{
     btn.addEventListener("click", ()=>{ stockFilter = btn.dataset.filter; renderStock(); });
   });
