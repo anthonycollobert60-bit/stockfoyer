@@ -351,11 +351,12 @@ let stockFilter = "all";
 
 function renderCatFilters(){
   const zone = $("#cat-filter-zone");
+  const bebeCat = categories.find(c => c.nom === "Bébé");
   let pills = `<button class="filter-pill ${stockFilter==='all'?'active':''}" data-filter="all">Tous</button>`;
   for(const cat of categories){
     pills += `<button class="filter-pill ${stockFilter===cat.id?'active':''}" data-filter="${cat.id}">${cat.icone} ${cat.nom}</button>`;
   }
-  if(currentFoyer.bebe_household_id){
+  if(currentFoyer.bebe_household_id && !bebeCat){
     pills += `<button class="filter-pill ${stockFilter==='bebe'?'active':''}" data-filter="bebe">🍼 Bébé</button>`;
   }
   zone.innerHTML = `<div class="filter-row">${pills}</div>`;
@@ -375,10 +376,13 @@ function renderStock(){
       <span class="txt">${bas.length} produit${bas.length>1?'s':''} en stock bas : ${bas.slice(0,3).map(p=>p.nom).join(", ")}${bas.length>3?"…":""}</span>
     </div>` : "";
 
+  const bebeCat = categories.find(c => c.nom === "Bébé");
   const filteredProduits = stockFilter === "all" ? produits
     : stockFilter === "bebe" ? []
     : produits.filter(p => p.categorie_id === stockFilter);
-  const showDiaper = (stockFilter === "all" || stockFilter === "bebe") && diaperStock.length > 0;
+  const showDiaper = diaperStock.length > 0 && (
+    stockFilter === "all" || stockFilter === "bebe" || (bebeCat && stockFilter === bebeCat.id)
+  );
 
   const content = $("#stock-content");
   if(filteredProduits.length === 0 && !showDiaper){
