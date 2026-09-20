@@ -132,6 +132,15 @@
   .section-title:first-child{margin-top:4px;}
   .pill{font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:var(--cream-2);color:var(--ink-soft);}
 
+  /* ---------- Filtres de catégories ---------- */
+  .filter-row{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;}
+  .filter-row::-webkit-scrollbar{display:none;}
+  .filter-pill{
+    flex:0 0 auto;padding:7px 14px;border-radius:99px;background:var(--cream-2);
+    color:var(--ink-soft);font-weight:700;font-size:13px;border:none;cursor:pointer;white-space:nowrap;
+  }
+  .filter-pill.active{background:var(--green);color:#fff;}
+
   /* ---------- Alert banner ---------- */
   .alert-banner{
     background:var(--orange-pale);border:1px solid #F0C98A;border-radius:16px;
@@ -161,6 +170,7 @@
   }
   .qty-btn.plus{background:var(--green-pale);color:var(--green-dark);}
   .qty-btn.minus{background:var(--red-pale);color:var(--red);}
+  .qty-btn.trash-btn{background:var(--red-pale);color:var(--red);font-size:14px;}
   .empty-state{text-align:center;padding:40px 20px;color:var(--ink-soft);}
   .empty-state .ic{font-size:38px;display:block;margin-bottom:10px;}
 
@@ -292,6 +302,7 @@
     <main>
       <!-- STOCK VIEW -->
       <div id="view-stock">
+        <div id="cat-filter-zone"></div>
         <div id="alert-banner-zone"></div>
         <div id="stock-content"></div>
       </div>
@@ -328,6 +339,6 @@
 <div id="modal-root"></div>
 <div id="toast-root"></div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

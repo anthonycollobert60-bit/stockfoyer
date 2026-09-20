@@ -347,7 +347,26 @@ function produitsBas(){
   return produits.filter(p => p.quantite_actuelle <= p.seuil_alerte);
 }
 
+let stockFilter = "all";
+
+function renderCatFilters(){
+  const zone = $("#cat-filter-zone");
+  let pills = `<button class="filter-pill ${stockFilter==='all'?'active':''}" data-filter="all">Tous</button>`;
+  for(const cat of categories){
+    pills += `<button class="filter-pill ${stockFilter===cat.id?'active':''}" data-filter="${cat.id}">${cat.icone} ${cat.nom}</button>`;
+  }
+  if(currentFoyer.bebe_household_id){
+    pills += `<button class="filter-pill ${stockFilter==='bebe'?'active':''}" data-filter="bebe">🍼 Bébé</button>`;
+  }
+  zone.innerHTML = `<div class="filter-row">${pills}</div>`;
+  $$(".filter-pill").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ stockFilter = btn.dataset.filter; renderStock(); });
+  });
+}
+
 function renderStock(){
+  renderCatFilters();
+
   const bas = produitsBas();
   const bannerZone = $("#alert-banner-zone");
   bannerZone.innerHTML = bas.length ? `
@@ -356,14 +375,22 @@ function renderStock(){
       <span class="txt">${bas.length} produit${bas.length>1?'s':''} en stock bas : ${bas.slice(0,3).map(p=>p.nom).join(", ")}${bas.length>3?"…":""}</span>
     </div>` : "";
 
+  const filteredProduits = stockFilter === "all" ? produits
+    : stockFilter === "bebe" ? []
+    : produits.filter(p => p.categorie_id === stockFilter);
+  const showDiaper = (stockFilter === "all" || stockFilter === "bebe") && diaperStock.length > 0;
+
   const content = $("#stock-content");
-  if(produits.length === 0 && diaperStock.length === 0){
-    content.innerHTML = `<div class="empty-state"><span class="ic">📦</span>Aucun produit pour l'instant.<br>Ajoutez-en un avec le bouton "+".</div>`;
+  if(filteredProduits.length === 0 && !showDiaper){
+    const msg = stockFilter === "all"
+      ? `Aucun produit pour l'instant.<br>Ajoutez-en un avec le bouton "+".`
+      : `Aucun article dans cette catégorie.`;
+    content.innerHTML = `<div class="empty-state"><span class="ic">📦</span>${msg}</div>`;
     return;
   }
 
   const byCat = {};
-  for(const p of produits){
+  for(const p of filteredProduits){
     const catId = p.categorie_id || "none";
     byCat[catId] = byCat[catId] || [];
     byCat[catId].push(p);
@@ -383,7 +410,7 @@ function renderStock(){
     html += `</div>`;
   }
 
-  if(diaperStock.length){
+  if(showDiaper){
     html += `<div class="cat-group"><div class="cat-label">🍼 Carnet bébé</div>`;
     for(const d of diaperStock) html += diaperCardHTML(d);
     html += `</div>`;
@@ -391,8 +418,11 @@ function renderStock(){
 
   content.innerHTML = html;
 
-  $$(".qty-btn").forEach(btn=>{
+  $$(".qty-btn:not(.trash-btn)").forEach(btn=>{
     btn.addEventListener("click", ()=> handleQtyClick(btn.dataset.id, btn.dataset.dir, parseFloat(btn.dataset.step||"1")));
+  });
+  $$(".trash-btn").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{ e.stopPropagation(); deleteProduitRapide(btn.dataset.id); });
   });
   $$(".diaper-qty-btn").forEach(btn=>{
     btn.addEventListener("click", ()=> handleDiaperQtyClick(btn.dataset.id, parseInt(btn.dataset.dir)));
@@ -403,6 +433,15 @@ function renderStock(){
       openEditProduct(card.dataset.id);
     });
   });
+}
+
+async function deleteProduitRapide(id){
+  const p = produits.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`Supprimer "${p.nom}" et tout son stock ?`)) return;
+  await sb.from("produits").delete().eq("id", id);
+  toast("Produit supprimé");
+  await loadAll();
 }
 
 function diaperCardHTML(d){
@@ -440,6 +479,7 @@ function prodCardHTML(p){
       <div class="qty-controls">
         <button class="qty-btn minus" data-id="${p.id}" data-dir="-1" data-step="${step}">–</button>
         <button class="qty-btn plus" data-id="${p.id}" data-dir="1" data-step="${step}">+</button>
+        <button class="qty-btn trash-btn" data-id="${p.id}" title="Supprimer">🗑️</button>
       </div>
     </div>`;
 }
@@ -480,7 +520,39 @@ async function appliquerMouvement(produit, delta, source){
 // AJOUT / EDITION PRODUIT
 // ============================================================
 function categorieOptionsHTML(selectedId){
-  return categories.map(c=>`<option value="${c.id}" ${c.id===selectedId?"selected":""}>${c.icone} ${c.nom}</option>`).join("");
+  const placeholder = `<option value="" ${!selectedId ? "selected" : ""} disabled>Choisir une catégorie…</option>`;
+  return placeholder + categories.map(c=>`<option value="${c.id}" ${c.id===selectedId?"selected":""}>${c.icone} ${c.nom}</option>`).join("");
+}
+
+function guessCategorieId(product){
+  const text = [
+    product.categories || "",
+    (product.categories_tags || []).join(" "),
+    product.pnns_groups_1 || "",
+    product.pnns_groups_2 || ""
+  ].join(" ").toLowerCase();
+
+  const rules = [
+    { nom: "Bébé", kw: ["baby", "bébé", "infant", "couche"] },
+    { nom: "Surgelés", kw: ["surgel", "frozen"] },
+    { nom: "Boissons", kw: ["boisson", "beverage", "drink", "soda", "jus de fruit", "eau min"] },
+    { nom: "Fruits & légumes", kw: ["fruit", "légume", "legume", "vegetable"] },
+    { nom: "Frais (lait, œufs...)", kw: ["lait", "dairy", "fromage", "cheese", "yaourt", "yogurt", "œuf", "egg", "viande", "meat", "poisson", "fish", "charcuterie"] },
+    { nom: "Épicerie sucrée", kw: ["sucr", "chocolat", "biscuit", "candy", "confiserie", "gateau", "gâteau", "cake", "cereal", "céréale"] },
+    { nom: "Hygiène & entretien", kw: ["hygien", "cosmetic", "detergent", "entretien", "nettoyage", "cleaning", "savon", "shampoo"] }
+  ];
+
+  for(const rule of rules){
+    if(rule.kw.some(k => text.includes(k))){
+      const cat = categories.find(c => c.nom === rule.nom);
+      if(cat) return cat.id;
+    }
+  }
+  if(text.includes("food") || text.includes("aliment") || text.includes("epicerie") || text.includes("épicerie")){
+    const cat = categories.find(c => c.nom === "Épicerie salée");
+    if(cat) return cat.id;
+  }
+  return null;
 }
 
 function openAddProduct(prefill={}){
@@ -622,15 +694,17 @@ async function onBarcodeDetected(code){
   closeSheet();
   toast("Recherche du produit…");
   let nom = "";
+  let categorieId = null;
   try{
     const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
     const data = await res.json();
     if(data.status === 1){
       nom = data.product.product_name_fr || data.product.product_name || "";
+      categorieId = guessCategorieId(data.product);
     }
   }catch(e){ /* pas de réseau OFF, on laisse vide */ }
 
-  openAddProduct({ nom, code_barres: code });
+  openAddProduct({ nom, code_barres: code, categorie_id: categorieId });
 }
 
 function openQuickStock(p){
