@@ -587,7 +587,10 @@ function openAddProduct(prefill={}){
     <div class="field"><label>Catégorie</label><select id="f-cat">${categorieOptionsHTML(prefill.categorie_id)}</select></div>
 
     <div id="fields-normal">
-      <div class="field"><label>Nom</label><input id="f-nom" type="text" value="${prefill.nom||""}" placeholder="Ex : Lait demi-écrémé"></div>
+      <div class="field"><label>Nom</label>
+        <input id="f-nom" list="f-nom-list" type="text" value="${prefill.nom||""}" placeholder="Ex : Lait demi-écrémé">
+        <datalist id="f-nom-list"></datalist>
+      </div>
       <div class="row-2">
         <div class="field"><label>Unité</label>
           <select id="f-unite">
@@ -598,7 +601,7 @@ function openAddProduct(prefill={}){
             <option value="mL">mL</option>
           </select>
         </div>
-        <div class="field"><label>Quantité initiale</label><input id="f-qte" type="number" step="0.1" value="1"></div>
+        <div class="field"><label>Quantité à ajouter</label><input id="f-qte" type="number" step="0.1" value="1"></div>
       </div>
       <div class="field"><label>Seuil d'alerte (stock bas quand ≤)</label><input id="f-seuil" type="number" step="0.1" value="1"></div>
     </div>
@@ -613,8 +616,11 @@ function openAddProduct(prefill={}){
           <option value="Autre">Autre</option>
         </select>
       </div>
-      <div class="field"><label>Taille / nom de l'article</label><input id="f-bebe-taille" type="text" placeholder="Ex : Taille 3, ou Crème change" value="${prefill.nom||""}"></div>
-      <div class="field"><label>Quantité initiale</label><input id="f-bebe-qte" type="number" step="1" value="1"></div>
+      <div class="field"><label>Taille / nom de l'article</label>
+        <input id="f-bebe-taille" list="f-bebe-taille-list" type="text" placeholder="Ex : Taille 3, ou Crème change" value="${prefill.nom||""}">
+        <datalist id="f-bebe-taille-list"></datalist>
+      </div>
+      <div class="field"><label>Quantité à ajouter</label><input id="f-bebe-qte" type="number" step="1" value="1"></div>
     </div>
 
     <input id="f-barcode" type="hidden" value="${prefill.code_barres||""}">
@@ -624,11 +630,24 @@ function openAddProduct(prefill={}){
   function isBebeMode(){
     return bebeCat && $("#f-cat").value === bebeCat.id && currentFoyer.bebe_household_id;
   }
+  function updateNomSuggestions(){
+    const catId = $("#f-cat").value || null;
+    $("#f-nom-list").innerHTML = produits
+      .filter(p => p.categorie_id === catId)
+      .map(p => `<option value="${p.nom.replace(/"/g,"&quot;")}"></option>`).join("");
+  }
+  function updateBebeSuggestions(){
+    const catVal = $("#f-bebe-cat").value;
+    $("#f-bebe-taille-list").innerHTML = diaperStock
+      .filter(d => d.category === catVal)
+      .map(d => `<option value="${d.size.replace(/"/g,"&quot;")}"></option>`).join("");
+  }
   function updateAddMode(){
-    if(isBebeMode()){ show($("#fields-bebe")); hide($("#fields-normal")); }
-    else{ hide($("#fields-bebe")); show($("#fields-normal")); }
+    if(isBebeMode()){ show($("#fields-bebe")); hide($("#fields-normal")); updateBebeSuggestions(); }
+    else{ hide($("#fields-bebe")); show($("#fields-normal")); updateNomSuggestions(); }
   }
   $("#f-cat").addEventListener("change", updateAddMode);
+  $("#f-bebe-cat").addEventListener("change", updateBebeSuggestions);
   updateAddMode();
 
   $("#f-submit").addEventListener("click", async ()=>{
@@ -637,32 +656,54 @@ function openAddProduct(prefill={}){
     if(isBebeMode()){
       const taille = $("#f-bebe-taille").value.trim();
       if(!taille){ errBox.textContent = "Indique une taille ou un nom d'article."; show(errBox); return; }
-      const { error } = await sb.from("diaper_stock").upsert({
-        household_id: currentFoyer.bebe_household_id,
-        child_id: currentFoyer.bebe_child_id,
-        category: $("#f-bebe-cat").value,
-        size: taille,
-        quantity: parseInt($("#f-bebe-qte").value) || 0
-      }, { onConflict: "household_id,child_id,category,size" });
-      if(error){ errBox.textContent = error.message; show(errBox); return; }
-      closeSheet();
-      toast("Ajouté au carnet bébé ✅");
+      const catVal = $("#f-bebe-cat").value;
+      const qteAjout = parseInt($("#f-bebe-qte").value) || 0;
+      const existing = diaperStock.find(d => d.category === catVal && d.size.toLowerCase() === taille.toLowerCase());
+
+      if(existing){
+        const { error } = await sb.from("diaper_stock").update({ quantity: existing.quantity + qteAjout }).eq("id", existing.id);
+        if(error){ errBox.textContent = error.message; show(errBox); return; }
+        closeSheet();
+        toast(`Quantité ajoutée à "${existing.size}" ✅`);
+      } else {
+        const { error } = await sb.from("diaper_stock").insert({
+          household_id: currentFoyer.bebe_household_id,
+          child_id: currentFoyer.bebe_child_id,
+          category: catVal,
+          size: taille,
+          quantity: qteAjout
+        });
+        if(error){ errBox.textContent = error.message; show(errBox); return; }
+        closeSheet();
+        toast("Ajouté au carnet bébé ✅");
+      }
       await loadAll();
       return;
     }
 
     const nom = $("#f-nom").value.trim();
     if(!nom){ errBox.textContent = "Le nom est obligatoire."; show(errBox); return; }
+    const catId = $("#f-cat").value || null;
+    const qteAjout = parseFloat($("#f-qte").value) || 0;
+    const existingProduit = produits.find(p => p.categorie_id === catId && p.nom.toLowerCase() === nom.toLowerCase());
+
+    if(existingProduit){
+      await appliquerMouvement(existingProduit, qteAjout, "manuel");
+      closeSheet();
+      toast(`Quantité ajoutée à "${existingProduit.nom}" ✅`);
+      return;
+    }
+
     const { data: prod, error } = await sb.from("produits").insert({
       foyer_id: currentFoyer.id,
       nom,
-      categorie_id: $("#f-cat").value || null,
+      categorie_id: catId,
       unite: $("#f-unite").value,
       seuil_alerte: parseFloat($("#f-seuil").value) || 0,
       code_barres: $("#f-barcode").value || null
     }).select().single();
     if(error){ errBox.textContent = error.message; show(errBox); return; }
-    await sb.from("stock").insert({ produit_id: prod.id, quantite_actuelle: parseFloat($("#f-qte").value) || 0 });
+    await sb.from("stock").insert({ produit_id: prod.id, quantite_actuelle: qteAjout });
     closeSheet();
     toast("Produit ajouté ✅");
     await loadAll();
