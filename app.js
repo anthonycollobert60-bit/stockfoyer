@@ -459,10 +459,11 @@ async function deleteProduitRapide(id){
 }
 
 function diaperCardHTML(d){
+  const label = d.category === "Couches" ? `Couches — ${d.size}` : d.size;
   return `
     <div class="prod-card">
       <div class="prod-info">
-        <p class="prod-name">${d.category} — taille ${d.size}</p>
+        <p class="prod-name">${label}</p>
         <p class="prod-qty"><b>${d.quantity}</b> pièce${d.quantity>1?'s':''}</p>
       </div>
       <div class="qty-controls">
