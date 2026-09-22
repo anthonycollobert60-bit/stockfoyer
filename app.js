@@ -580,30 +580,78 @@ function guessCategorieId(product){
 }
 
 function openAddProduct(prefill={}){
+  const bebeCat = categories.find(c => c.nom === "Bébé");
   openSheet(`
     <h2>${prefill.nom ? "Article scanné" : "Ajouter un produit"}</h2>
     <div id="add-error" class="error-msg hidden" style="margin-bottom:10px;"></div>
-    <div class="field"><label>Nom</label><input id="f-nom" type="text" value="${prefill.nom||""}" placeholder="Ex : Lait demi-écrémé"></div>
     <div class="field"><label>Catégorie</label><select id="f-cat">${categorieOptionsHTML(prefill.categorie_id)}</select></div>
-    <div class="row-2">
-      <div class="field"><label>Unité</label>
-        <select id="f-unite">
-          <option value="pièce">pièce</option>
-          <option value="kg">kg</option>
-          <option value="g">g</option>
-          <option value="L">L</option>
-          <option value="mL">mL</option>
+
+    <div id="fields-normal">
+      <div class="field"><label>Nom</label><input id="f-nom" type="text" value="${prefill.nom||""}" placeholder="Ex : Lait demi-écrémé"></div>
+      <div class="row-2">
+        <div class="field"><label>Unité</label>
+          <select id="f-unite">
+            <option value="pièce">pièce</option>
+            <option value="kg">kg</option>
+            <option value="g">g</option>
+            <option value="L">L</option>
+            <option value="mL">mL</option>
+          </select>
+        </div>
+        <div class="field"><label>Quantité initiale</label><input id="f-qte" type="number" step="0.1" value="1"></div>
+      </div>
+      <div class="field"><label>Seuil d'alerte (stock bas quand ≤)</label><input id="f-seuil" type="number" step="0.1" value="1"></div>
+    </div>
+
+    <div id="fields-bebe" class="hidden">
+      <div class="info-msg" style="margin-bottom:12px;">Cet article sera ajouté directement au stock du carnet bébé, visible dans les deux applis.</div>
+      <div class="field"><label>Type</label>
+        <select id="f-bebe-cat">
+          <option value="Couches">Couches</option>
+          <option value="Lait">Lait infantile</option>
+          <option value="Lingettes">Lingettes</option>
+          <option value="Autre">Autre</option>
         </select>
       </div>
-      <div class="field"><label>Quantité initiale</label><input id="f-qte" type="number" step="0.1" value="1"></div>
+      <div class="field"><label>Taille / nom de l'article</label><input id="f-bebe-taille" type="text" placeholder="Ex : Taille 3, ou Crème change" value="${prefill.nom||""}"></div>
+      <div class="field"><label>Quantité initiale</label><input id="f-bebe-qte" type="number" step="1" value="1"></div>
     </div>
-    <div class="field"><label>Seuil d'alerte (stock bas quand ≤)</label><input id="f-seuil" type="number" step="0.1" value="1"></div>
+
     <input id="f-barcode" type="hidden" value="${prefill.code_barres||""}">
     <button class="btn btn-primary btn-block" id="f-submit">Ajouter au stock</button>
   `);
+
+  function isBebeMode(){
+    return bebeCat && $("#f-cat").value === bebeCat.id && currentFoyer.bebe_household_id;
+  }
+  function updateAddMode(){
+    if(isBebeMode()){ show($("#fields-bebe")); hide($("#fields-normal")); }
+    else{ hide($("#fields-bebe")); show($("#fields-normal")); }
+  }
+  $("#f-cat").addEventListener("change", updateAddMode);
+  updateAddMode();
+
   $("#f-submit").addEventListener("click", async ()=>{
-    const nom = $("#f-nom").value.trim();
     const errBox = $("#add-error");
+
+    if(isBebeMode()){
+      const taille = $("#f-bebe-taille").value.trim();
+      if(!taille){ errBox.textContent = "Indique une taille ou un nom d'article."; show(errBox); return; }
+      const { error } = await sb.from("diaper_stock").upsert({
+        household_id: currentFoyer.bebe_household_id,
+        child_id: currentFoyer.bebe_child_id,
+        category: $("#f-bebe-cat").value,
+        size: taille,
+        quantity: parseInt($("#f-bebe-qte").value) || 0
+      }, { onConflict: "household_id,child_id,category,size" });
+      if(error){ errBox.textContent = error.message; show(errBox); return; }
+      closeSheet();
+      toast("Ajouté au carnet bébé ✅");
+      await loadAll();
+      return;
+    }
+
+    const nom = $("#f-nom").value.trim();
     if(!nom){ errBox.textContent = "Le nom est obligatoire."; show(errBox); return; }
     const { data: prod, error } = await sb.from("produits").insert({
       foyer_id: currentFoyer.id,
