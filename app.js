@@ -609,15 +609,7 @@ function openAddProduct(prefill={}){
 
     <div id="fields-bebe" class="hidden">
       <div class="info-msg" style="margin-bottom:12px;">Cet article sera ajouté directement au stock du carnet bébé, visible dans les deux applis.</div>
-      <div class="field"><label>Type</label>
-        <select id="f-bebe-cat">
-          <option value="Couches">Couches</option>
-          <option value="Lait">Lait infantile</option>
-          <option value="Lingettes">Lingettes</option>
-          <option value="Autre">Autre</option>
-        </select>
-      </div>
-      <div class="field"><label>Taille / nom de l'article</label>
+      <div class="field"><label>Nom de l'article</label>
         <input id="f-bebe-taille" type="text" placeholder="Ex : Taille 3, ou Crème change" value="${prefill.nom||""}" autocomplete="off">
         <div id="f-bebe-taille-suggest" class="suggest-box hidden"></div>
       </div>
@@ -648,7 +640,7 @@ function openAddProduct(prefill={}){
     input.addEventListener("blur", ()=> setTimeout(()=>hide(box), 150));
   }
   attachSuggest("#f-nom", "#f-nom-suggest", ()=> produits.filter(p => p.categorie_id === ($("#f-cat").value || null)), p => p.nom);
-  attachSuggest("#f-bebe-taille", "#f-bebe-taille-suggest", ()=> diaperStock.filter(d => d.category === $("#f-bebe-cat").value), d => d.size);
+  attachSuggest("#f-bebe-taille", "#f-bebe-taille-suggest", ()=> diaperStock, d => d.size);
 
   function updateAddMode(){
     if(isBebeMode()){ show($("#fields-bebe")); hide($("#fields-normal")); }
@@ -662,10 +654,9 @@ function openAddProduct(prefill={}){
 
     if(isBebeMode()){
       const taille = $("#f-bebe-taille").value.trim();
-      if(!taille){ errBox.textContent = "Indique une taille ou un nom d'article."; show(errBox); return; }
-      const catVal = $("#f-bebe-cat").value;
+      if(!taille){ errBox.textContent = "Indique un nom d'article."; show(errBox); return; }
       const qteAjout = parseInt($("#f-bebe-qte").value) || 0;
-      const existing = diaperStock.find(d => d.category === catVal && d.size.toLowerCase() === taille.toLowerCase());
+      const existing = diaperStock.find(d => d.size.toLowerCase() === taille.toLowerCase());
 
       if(existing){
         const { error } = await sb.from("diaper_stock").update({ quantity: existing.quantity + qteAjout }).eq("id", existing.id);
@@ -676,7 +667,7 @@ function openAddProduct(prefill={}){
         const { error } = await sb.from("diaper_stock").insert({
           household_id: currentFoyer.bebe_household_id,
           child_id: currentFoyer.bebe_child_id,
-          category: catVal,
+          category: null,
           size: taille,
           quantity: qteAjout
         });
