@@ -438,6 +438,9 @@ function renderStock(){
   $$(".diaper-qty-btn").forEach(btn=>{
     btn.addEventListener("click", ()=> handleDiaperQtyClick(btn.dataset.id, parseInt(btn.dataset.dir)));
   });
+  $$(".diaper-trash-btn").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{ e.stopPropagation(); deleteDiaperRapide(btn.dataset.id); });
+  });
   $$(".prod-card[data-id]").forEach(card=>{
     card.addEventListener("click", (e)=>{
       if(e.target.closest(".qty-btn")) return;
@@ -465,8 +468,18 @@ function diaperCardHTML(d){
       <div class="qty-controls">
         <button class="qty-btn minus diaper-qty-btn" data-id="${d.id}" data-dir="-1">–</button>
         <button class="qty-btn plus diaper-qty-btn" data-id="${d.id}" data-dir="1">+</button>
+        <button class="qty-btn trash-btn diaper-trash-btn" data-id="${d.id}" title="Supprimer">🗑️</button>
       </div>
     </div>`;
+}
+
+async function deleteDiaperRapide(id){
+  const d = diaperStock.find(x=>x.id===id);
+  if(!d) return;
+  if(!confirm(`Supprimer "${d.category} — taille ${d.size}" ?`)) return;
+  await sb.from("diaper_stock").delete().eq("id", id);
+  toast("Article supprimé");
+  await loadAll();
 }
 
 async function handleDiaperQtyClick(id, dir){
