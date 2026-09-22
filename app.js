@@ -589,8 +589,8 @@ function openAddProduct(prefill={}){
 
     <div id="fields-normal">
       <div class="field"><label>Nom</label>
-        <input id="f-nom" list="f-nom-list" type="text" value="${prefill.nom||""}" placeholder="Ex : Lait demi-écrémé">
-        <datalist id="f-nom-list"></datalist>
+        <input id="f-nom" type="text" value="${prefill.nom||""}" placeholder="Ex : Lait demi-écrémé" autocomplete="off">
+        <div id="f-nom-suggest" class="suggest-box hidden"></div>
       </div>
       <div class="row-2">
         <div class="field"><label>Unité</label>
@@ -618,8 +618,8 @@ function openAddProduct(prefill={}){
         </select>
       </div>
       <div class="field"><label>Taille / nom de l'article</label>
-        <input id="f-bebe-taille" list="f-bebe-taille-list" type="text" placeholder="Ex : Taille 3, ou Crème change" value="${prefill.nom||""}">
-        <datalist id="f-bebe-taille-list"></datalist>
+        <input id="f-bebe-taille" type="text" placeholder="Ex : Taille 3, ou Crème change" value="${prefill.nom||""}" autocomplete="off">
+        <div id="f-bebe-taille-suggest" class="suggest-box hidden"></div>
       </div>
       <div class="field"><label>Quantité à ajouter</label><input id="f-bebe-qte" type="number" step="1" value="1"></div>
     </div>
@@ -631,24 +631,30 @@ function openAddProduct(prefill={}){
   function isBebeMode(){
     return bebeCat && $("#f-cat").value === bebeCat.id && currentFoyer.bebe_household_id;
   }
-  function updateNomSuggestions(){
-    const catId = $("#f-cat").value || null;
-    $("#f-nom-list").innerHTML = produits
-      .filter(p => p.categorie_id === catId)
-      .map(p => `<option value="${p.nom.replace(/"/g,"&quot;")}"></option>`).join("");
+  function attachSuggest(inputId, boxId, itemsProvider, labelFn){
+    const input = $(inputId);
+    const box = $(boxId);
+    input.addEventListener("input", ()=>{
+      const q = input.value.trim().toLowerCase();
+      if(!q){ box.innerHTML = ""; hide(box); return; }
+      const items = itemsProvider().filter(x => labelFn(x).toLowerCase().includes(q)).slice(0, 5);
+      if(!items.length){ box.innerHTML = ""; hide(box); return; }
+      box.innerHTML = items.map(x => `<div class="suggest-item" data-val="${labelFn(x).replace(/"/g,"&quot;")}">${labelFn(x)}</div>`).join("");
+      show(box);
+      box.querySelectorAll(".suggest-item").forEach(el=>{
+        el.addEventListener("click", ()=>{ input.value = el.dataset.val; box.innerHTML = ""; hide(box); });
+      });
+    });
+    input.addEventListener("blur", ()=> setTimeout(()=>hide(box), 150));
   }
-  function updateBebeSuggestions(){
-    const catVal = $("#f-bebe-cat").value;
-    $("#f-bebe-taille-list").innerHTML = diaperStock
-      .filter(d => d.category === catVal)
-      .map(d => `<option value="${d.size.replace(/"/g,"&quot;")}"></option>`).join("");
-  }
+  attachSuggest("#f-nom", "#f-nom-suggest", ()=> produits.filter(p => p.categorie_id === ($("#f-cat").value || null)), p => p.nom);
+  attachSuggest("#f-bebe-taille", "#f-bebe-taille-suggest", ()=> diaperStock.filter(d => d.category === $("#f-bebe-cat").value), d => d.size);
+
   function updateAddMode(){
-    if(isBebeMode()){ show($("#fields-bebe")); hide($("#fields-normal")); updateBebeSuggestions(); }
-    else{ hide($("#fields-bebe")); show($("#fields-normal")); updateNomSuggestions(); }
+    if(isBebeMode()){ show($("#fields-bebe")); hide($("#fields-normal")); }
+    else{ hide($("#fields-bebe")); show($("#fields-normal")); }
   }
   $("#f-cat").addEventListener("change", updateAddMode);
-  $("#f-bebe-cat").addEventListener("change", updateBebeSuggestions);
   updateAddMode();
 
   $("#f-submit").addEventListener("click", async ()=>{
