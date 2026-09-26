@@ -1124,7 +1124,13 @@ async function runReceiptOCR(file){
     const processed = await upscaleImage(file).catch(()=> file);
     const result = await Tesseract.recognize(processed, "fra");
     const text = result.data.text || "";
-    receiptCandidates = parseReceiptLines(text);
+
+    const { data: appris } = await sb.from("rayon_categories")
+      .select("rayon_texte, categorie_id").eq("foyer_id", currentFoyer.id);
+    const rayonMap = {};
+    (appris || []).forEach(r => { rayonMap[r.rayon_texte.toLowerCase()] = r.categorie_id; });
+
+    receiptCandidates = parseReceiptLines(text, rayonMap);
     renderReceiptReview();
   }catch(e){
     statusZone.innerHTML = `<div class="error-msg">Erreur d'analyse : ${e.message || e}</div>`;
@@ -1152,7 +1158,7 @@ function guessCategorieFromHeader(headerText){
   return null;
 }
 
-function parseReceiptLines(text){
+function parseReceiptLines(text, rayonMap = {}){
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
   // Dès qu'on croise une de ces lignes, tout ce qui suit est forcément
@@ -1170,13 +1176,16 @@ function parseReceiptLines(text){
 
   const candidates = [];
   let currentCatId = null;
+  let currentRayonTexte = null;
   for(const line of lines){
     if(stopPatterns.some(re => re.test(line))) break;
 
     // Ligne de rayon (ex: ">> Epicerie sucree") : on retient la catégorie
-    // devinée pour tous les articles qui suivent, jusqu'au prochain rayon.
+    // devinée (ou apprise d'une fois précédente) pour tous les articles
+    // qui suivent, jusqu'au prochain rayon.
     if(/^>>/.test(line)){
-      currentCatId = guessCategorieFromHeader(line.replace(/^>>\s*/, ""));
+      currentRayonTexte = line.replace(/^>>\s*/, "").trim();
+      currentCatId = guessCategorieFromHeader(currentRayonTexte) || rayonMap[currentRayonTexte.toLowerCase()] || null;
       continue;
     }
 
@@ -1194,7 +1203,7 @@ function parseReceiptLines(text){
     if(nom.length < 2) continue;
     if(!/[a-zA-ZÀ-ÿ]/.test(nom)) continue; // doit contenir au moins une lettre
 
-    candidates.push({ nom, prix: last[0].replace(",", "."), categorieId: currentCatId, coche: true });
+    candidates.push({ nom, prix: last[0].replace(",", "."), categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true });
   }
   return candidates;
 }
@@ -1232,7 +1241,19 @@ function renderReceiptReview(){
     el.addEventListener("input", ()=>{ receiptCandidates[el.dataset.idx].nom = el.value; });
   });
   $$('[data-role="receipt-cat"]').forEach(el=>{
-    el.addEventListener("change", ()=>{ receiptCandidates[el.dataset.idx].categorieId = el.value || null; });
+    el.addEventListener("change", async ()=>{
+      const idx = el.dataset.idx;
+      const newCat = el.value || null;
+      receiptCandidates[idx].categorieId = newCat;
+      const rayon = receiptCandidates[idx].rayonTexte;
+      if(rayon && newCat){
+        await sb.from("rayon_categories").upsert({
+          foyer_id: currentFoyer.id,
+          rayon_texte: rayon.toLowerCase(),
+          categorie_id: newCat
+        }, { onConflict: "foyer_id,rayon_texte" });
+      }
+    });
   });
   $("#receipt-cancel2").addEventListener("click", closeSheet);
   $("#receipt-confirm").addEventListener("click", confirmReceiptImport);
