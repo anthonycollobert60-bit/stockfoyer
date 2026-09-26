@@ -952,9 +952,11 @@ $("#fab-main").addEventListener("click", ()=>{
     openSheet(`
       <h2>Ajouter un produit</h2>
       <button class="btn btn-primary btn-block" id="opt-scan" style="margin-bottom:10px;">📷 Scanner un code-barres</button>
+      <button class="btn btn-primary btn-block" id="opt-ticket" style="margin-bottom:10px;">🧾 Scanner un ticket de caisse</button>
       <button class="btn btn-secondary btn-block" id="opt-manuel">✍️ Saisir manuellement</button>
     `);
     $("#opt-scan").addEventListener("click", openScanner);
+    $("#opt-ticket").addEventListener("click", openReceiptScan);
     $("#opt-manuel").addEventListener("click", ()=> openAddProduct());
   } else if(currentView === "liste"){
     openAddListeItem();
@@ -1058,6 +1060,144 @@ $("#avatar-file-input").addEventListener("change", async (e)=>{
   $("#foyer-avatar").src = pub.publicUrl;
   toast("Photo mise à jour ✅");
 });
+
+// ============================================================
+// SCAN DE TICKET DE CAISSE (OCR, 100% dans le navigateur)
+// ============================================================
+let receiptCandidates = [];
+
+function openReceiptScan(){
+  openSheet(`
+    <h2>Scanner un ticket de caisse</h2>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin-top:-8px;">Prends une photo du ticket, ou choisis-en une déjà enregistrée dans ta galerie. La lecture automatique n'est pas parfaite : tu pourras vérifier et corriger avant de valider.</p>
+    <input type="file" id="receipt-file-input" accept="image/*" style="margin:14px 0;width:100%;">
+    <div id="receipt-status"></div>
+    <button class="btn btn-secondary btn-block" id="receipt-cancel">Annuler</button>
+  `);
+  $("#receipt-cancel").addEventListener("click", closeSheet);
+  $("#receipt-file-input").addEventListener("change", async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    await runReceiptOCR(file);
+  });
+}
+
+async function runReceiptOCR(file){
+  const statusZone = $("#receipt-status");
+  statusZone.innerHTML = `<div class="loader"></div><p style="text-align:center;color:var(--ink-soft);font-size:13px;">Analyse du ticket en cours… ça peut prendre 10 à 20 secondes.</p>`;
+  $("#receipt-file-input").disabled = true;
+
+  if(!window.Tesseract){
+    try{
+      await new Promise((resolve, reject)=>{
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }catch(e){
+      statusZone.innerHTML = `<div class="error-msg">Impossible de charger l'outil de lecture. Vérifie ta connexion internet et réessaie.</div>`;
+      return;
+    }
+  }
+
+  try{
+    const result = await Tesseract.recognize(file, "fra");
+    const text = result.data.text || "";
+    receiptCandidates = parseReceiptLines(text);
+    renderReceiptReview();
+  }catch(e){
+    statusZone.innerHTML = `<div class="error-msg">Erreur d'analyse : ${e.message || e}</div>`;
+  }
+}
+
+function parseReceiptLines(text){
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const skipKeywords = [
+    "total", "tva", "especes", "espèces", "carte", " cb ", "rendu", "sous-total",
+    "siret", "merci", "ticket", "caisse", "tel ", "www.", "carte fid", "monnaie",
+    "paiement", "remise", "eco-part", "eco part", "vendeur", "n° ", "date", "heure"
+  ];
+  const priceRegex = /(\d{1,4}[,.]\d{2})\s*(€|eur)?\s*$/i;
+
+  const candidates = [];
+  for(const line of lines){
+    const lower = line.toLowerCase();
+    if(skipKeywords.some(k => lower.includes(k))) continue;
+    const m = line.match(priceRegex);
+    if(!m) continue;
+    let nom = line.slice(0, m.index).trim();
+    nom = nom.replace(/^\d+\s*[xX]\s*/, "").replace(/[*]/g, "").trim();
+    if(nom.length < 2 || /^\d+$/.test(nom)) continue;
+    candidates.push({ nom, prix: m[1].replace(",", "."), coche: true });
+  }
+  return candidates;
+}
+
+function renderReceiptReview(){
+  openSheet(`
+    <h2>Articles détectés</h2>
+    <p style="color:var(--ink-soft);font-size:13px;margin-top:-8px;">Décoche ce qui n'est pas un article, corrige les noms si besoin, puis valide.</p>
+    <div id="receipt-list" style="max-height:50vh;overflow-y:auto;margin:12px 0;">
+      ${receiptCandidates.map((c,i)=>`
+        <div class="list-item">
+          <div class="checkbox checked" data-idx="${i}" data-role="receipt-check">✓</div>
+          <input type="text" value="${c.nom.replace(/"/g,"&quot;")}" data-idx="${i}" data-role="receipt-nom" style="flex:1;border:none;background:none;font-weight:700;padding:4px;font-family:inherit;font-size:14px;">
+          <div class="qty-tag">${c.prix} €</div>
+        </div>
+      `).join("")}
+    </div>
+    ${receiptCandidates.length === 0 ? `<p style="text-align:center;color:var(--ink-soft);margin-bottom:14px;">Aucun article détecté automatiquement sur cette photo. Essaie une photo plus nette, ou ajoute tes articles manuellement.</p>` : ""}
+    <button class="btn btn-primary btn-block" id="receipt-confirm" style="margin-bottom:10px;">Ajouter les articles cochés au stock</button>
+    <button class="btn btn-secondary btn-block" id="receipt-cancel2">Annuler</button>
+  `);
+
+  $$('[data-role="receipt-check"]').forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const i = el.dataset.idx;
+      receiptCandidates[i].coche = !receiptCandidates[i].coche;
+      el.classList.toggle("checked");
+      el.textContent = receiptCandidates[i].coche ? "✓" : "";
+    });
+  });
+  $$('[data-role="receipt-nom"]').forEach(el=>{
+    el.addEventListener("input", ()=>{ receiptCandidates[el.dataset.idx].nom = el.value; });
+  });
+  $("#receipt-cancel2").addEventListener("click", closeSheet);
+  $("#receipt-confirm").addEventListener("click", confirmReceiptImport);
+}
+
+async function confirmReceiptImport(){
+  const toAdd = receiptCandidates.filter(c => c.coche && c.nom.trim());
+  closeSheet();
+  if(!toAdd.length) return;
+  toast(`Ajout de ${toAdd.length} article(s)…`);
+
+  for(const c of toAdd){
+    const nomPropre = c.nom.trim();
+    const existing = produits.find(p => p.nom.toLowerCase() === nomPropre.toLowerCase());
+    if(existing){
+      await appliquerMouvement(existing, 1, "ticket");
+    } else {
+      const { data: prod, error } = await sb.from("produits").insert({
+        foyer_id: currentFoyer.id,
+        nom: nomPropre,
+        categorie_id: null,
+        unite: "pièce",
+        seuil_alerte: 1
+      }).select().single();
+      if(!error){
+        await sb.from("stock").insert({ produit_id: prod.id, quantite_actuelle: 1 });
+        await sb.from("historique_mouvements").insert({
+          produit_id: prod.id, type: "ajout", quantite: 1, source: "ticket", user_id: currentUser.id
+        });
+      }
+    }
+  }
+  toast("Ticket importé ✅");
+  await loadAll();
+}
 
 // ---------------- PWA install / service worker ----------------
 if("serviceWorker" in navigator){
