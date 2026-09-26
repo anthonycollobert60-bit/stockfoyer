@@ -1131,6 +1131,27 @@ async function runReceiptOCR(file){
   }
 }
 
+function guessCategorieFromHeader(headerText){
+  const t = headerText.toLowerCase();
+  const rules = [
+    { nom: "Épicerie sucrée", kw: ["sucree", "sucrée"] },
+    { nom: "Boissons", kw: ["boisson"] },
+    { nom: "Fruits & légumes", kw: ["fruit", "legume", "légume"] },
+    { nom: "Frais (lait, œufs...)", kw: ["cremerie", "crèmerie", "laitier", "fromage", "charcuterie", "boucherie", "volaille", "poissonnerie", "traiteur", "oeuf", "œuf"] },
+    { nom: "Surgelés", kw: ["surgele", "surgelé"] },
+    { nom: "Hygiène & entretien", kw: ["hygiene", "hygiène", "parfumerie", "cosmetique", "cosmétique", "entretien", "menager", "ménager", "droguerie", "beaute", "beauté"] },
+    { nom: "Bébé", kw: ["bebe", "bébé", "puericulture", "puériculture"] },
+    { nom: "Épicerie salée", kw: ["epicerie", "épicerie"] }
+  ];
+  for(const rule of rules){
+    if(rule.kw.some(k => t.includes(k))){
+      const cat = categories.find(c => c.nom === rule.nom);
+      if(cat) return cat.id;
+    }
+  }
+  return null;
+}
+
 function parseReceiptLines(text){
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
@@ -1144,12 +1165,21 @@ function parseReceiptLines(text){
   // Lignes à ignorer individuellement (en-têtes, infos magasin...)
   const skipPatterns = [
     /\btva\b/i, /\bsiret\b/i, /\bmerci\b/i, /\bcaisse\b/i, /\btel\s*:/i,
-    /www\./i, /carte\s*fid/i, /vendeur/i, /^n°/i, /^date\b/i, /^heure\b/i, /^>>/
+    /www\./i, /carte\s*fid/i, /vendeur/i, /^n°/i, /^date\b/i, /^heure\b/i
   ];
 
   const candidates = [];
+  let currentCatId = null;
   for(const line of lines){
     if(stopPatterns.some(re => re.test(line))) break;
+
+    // Ligne de rayon (ex: ">> Epicerie sucree") : on retient la catégorie
+    // devinée pour tous les articles qui suivent, jusqu'au prochain rayon.
+    if(/^>>/.test(line)){
+      currentCatId = guessCategorieFromHeader(line.replace(/^>>\s*/, ""));
+      continue;
+    }
+
     if(skipPatterns.some(re => re.test(line))) continue;
 
     // On cherche TOUS les nombres décimaux de la ligne et on garde le
@@ -1164,7 +1194,7 @@ function parseReceiptLines(text){
     if(nom.length < 2) continue;
     if(!/[a-zA-ZÀ-ÿ]/.test(nom)) continue; // doit contenir au moins une lettre
 
-    candidates.push({ nom, prix: last[0].replace(",", "."), coche: true });
+    candidates.push({ nom, prix: last[0].replace(",", "."), categorieId: currentCatId, coche: true });
   }
   return candidates;
 }
@@ -1175,10 +1205,13 @@ function renderReceiptReview(){
     <p style="color:var(--ink-soft);font-size:13px;margin-top:-8px;">Décoche ce qui n'est pas un article, corrige les noms si besoin, puis valide.</p>
     <div id="receipt-list" style="max-height:50vh;overflow-y:auto;margin:12px 0;">
       ${receiptCandidates.map((c,i)=>`
-        <div class="list-item">
-          <div class="checkbox checked" data-idx="${i}" data-role="receipt-check">✓</div>
-          <input type="text" value="${c.nom.replace(/"/g,"&quot;")}" data-idx="${i}" data-role="receipt-nom" style="flex:1;border:none;background:none;font-weight:700;padding:4px;font-family:inherit;font-size:14px;">
-          <div class="qty-tag">${c.prix} €</div>
+        <div class="list-item" style="flex-direction:column;align-items:stretch;gap:6px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="checkbox checked" data-idx="${i}" data-role="receipt-check">✓</div>
+            <input type="text" value="${c.nom.replace(/"/g,"&quot;")}" data-idx="${i}" data-role="receipt-nom" style="flex:1;border:none;background:none;font-weight:700;padding:4px;font-family:inherit;font-size:14px;">
+            <div class="qty-tag">${c.prix} €</div>
+          </div>
+          <select data-idx="${i}" data-role="receipt-cat" style="margin-left:36px;font-size:12.5px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--ink-soft);">${categorieOptionsHTML(c.categorieId)}</select>
         </div>
       `).join("")}
     </div>
@@ -1197,6 +1230,9 @@ function renderReceiptReview(){
   });
   $$('[data-role="receipt-nom"]').forEach(el=>{
     el.addEventListener("input", ()=>{ receiptCandidates[el.dataset.idx].nom = el.value; });
+  });
+  $$('[data-role="receipt-cat"]').forEach(el=>{
+    el.addEventListener("change", ()=>{ receiptCandidates[el.dataset.idx].categorieId = el.value || null; });
   });
   $("#receipt-cancel2").addEventListener("click", closeSheet);
   $("#receipt-confirm").addEventListener("click", confirmReceiptImport);
@@ -1217,7 +1253,7 @@ async function confirmReceiptImport(){
       const { data: prod, error } = await sb.from("produits").insert({
         foyer_id: currentFoyer.id,
         nom: nomPropre,
-        categorie_id: null,
+        categorie_id: c.categorieId || null,
         unite: "pièce",
         seuil_alerte: 1
       }).select().single();
