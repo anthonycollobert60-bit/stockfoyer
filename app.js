@@ -1082,6 +1082,24 @@ function openReceiptScan(){
   });
 }
 
+async function upscaleImage(file, scale = 2, maxDim = 2200){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let w = img.width * scale;
+      let h = img.height * scale;
+      if(w > maxDim){ const r = maxDim / w; w *= r; h *= r; }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("toBlob a échoué")), "image/png");
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 async function runReceiptOCR(file){
   const statusZone = $("#receipt-status");
   statusZone.innerHTML = `<div class="loader"></div><p style="text-align:center;color:var(--ink-soft);font-size:13px;">Analyse du ticket en cours… ça peut prendre 10 à 20 secondes.</p>`;
@@ -1103,7 +1121,8 @@ async function runReceiptOCR(file){
   }
 
   try{
-    const result = await Tesseract.recognize(file, "fra");
+    const processed = await upscaleImage(file).catch(()=> file);
+    const result = await Tesseract.recognize(processed, "fra");
     const text = result.data.text || "";
     receiptCandidates = parseReceiptLines(text);
     renderReceiptReview();
@@ -1114,23 +1133,38 @@ async function runReceiptOCR(file){
 
 function parseReceiptLines(text){
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-  const skipKeywords = [
-    "total", "tva", "especes", "espèces", "carte", " cb ", "rendu", "sous-total",
-    "siret", "merci", "ticket", "caisse", "tel ", "www.", "carte fid", "monnaie",
-    "paiement", "remise", "eco-part", "eco part", "vendeur", "n° ", "date", "heure"
+
+  // Dès qu'on croise une de ces lignes, tout ce qui suit est forcément
+  // du récapitulatif de paiement/TVA/pub — plus jamais un article.
+  const stopPatterns = [
+    /^total\b/i, /reste\s*[aà]\s*payer/i, /bon\s*imm[ée]diat/i, /^cb\b/i,
+    /^code\b/i, /bons?\s*de\s*r[ée]duction/i, /^-{3,}/, /esp[eè]ces/i,
+    /\brendu\b/i, /\bmonnaie\b/i, /^bravo\b/i, /tombola/i, /paiement/i
   ];
-  const priceRegex = /(\d{1,4}[,.]\d{2})\s*(€|eur)?\s*$/i;
+  // Lignes à ignorer individuellement (en-têtes, infos magasin...)
+  const skipPatterns = [
+    /\btva\b/i, /\bsiret\b/i, /\bmerci\b/i, /\bcaisse\b/i, /\btel\s*:/i,
+    /www\./i, /carte\s*fid/i, /vendeur/i, /^n°/i, /^date\b/i, /^heure\b/i, /^>>/
+  ];
 
   const candidates = [];
   for(const line of lines){
-    const lower = line.toLowerCase();
-    if(skipKeywords.some(k => lower.includes(k))) continue;
-    const m = line.match(priceRegex);
-    if(!m) continue;
-    let nom = line.slice(0, m.index).trim();
-    nom = nom.replace(/^\d+\s*[xX]\s*/, "").replace(/[*]/g, "").trim();
-    if(nom.length < 2 || /^\d+$/.test(nom)) continue;
-    candidates.push({ nom, prix: m[1].replace(",", "."), coche: true });
+    if(stopPatterns.some(re => re.test(line))) break;
+    if(skipPatterns.some(re => re.test(line))) continue;
+
+    // On cherche TOUS les nombres décimaux de la ligne et on garde le
+    // dernier : sur ce genre de ticket, un chiffre de taux de TVA isolé
+    // (ex: "6", "8") traîne souvent juste après le vrai prix.
+    const matches = [...line.matchAll(/\d{1,4}[,.]\d{2}/g)];
+    if(!matches.length) continue;
+    const last = matches[matches.length - 1];
+
+    let nom = line.slice(0, last.index).trim();
+    nom = nom.replace(/^\d+\s*[xX]\s*/, "").replace(/[*']/g, "").trim();
+    if(nom.length < 2) continue;
+    if(!/[a-zA-ZÀ-ÿ]/.test(nom)) continue; // doit contenir au moins une lettre
+
+    candidates.push({ nom, prix: last[0].replace(",", "."), coche: true });
   }
   return candidates;
 }
