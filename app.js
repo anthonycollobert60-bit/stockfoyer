@@ -1065,6 +1065,7 @@ $("#avatar-file-input").addEventListener("change", async (e)=>{
 // SCAN DE TICKET DE CAISSE (OCR, 100% dans le navigateur)
 // ============================================================
 let receiptCandidates = [];
+let lastReceiptRawText = "";
 
 function openReceiptScan(){
   openSheet(`
@@ -1161,6 +1162,7 @@ async function runReceiptOCR(file){
     (appris || []).forEach(r => { rayonMap[r.rayon_texte.toLowerCase()] = r.categorie_id; });
 
     receiptCandidates = parseReceiptLines(text, rayonMap);
+    lastReceiptRawText = text;
     renderReceiptReview();
   }catch(e){
     statusZone.innerHTML = `<div class="error-msg">Erreur d'analyse : ${e.message || e}</div>`;
@@ -1300,7 +1302,11 @@ function renderReceiptReview(){
     </div>
     ${receiptCandidates.length === 0 ? `<p style="text-align:center;color:var(--ink-soft);margin-bottom:14px;">Aucun article détecté automatiquement sur cette photo. Essaie une photo plus nette, ou ajoute tes articles manuellement.</p>` : ""}
     <button class="btn btn-primary btn-block" id="receipt-confirm" style="margin-bottom:10px;">Ajouter les articles cochés au stock</button>
-    <button class="btn btn-secondary btn-block" id="receipt-cancel2">Annuler</button>
+    <button class="btn btn-secondary btn-block" id="receipt-cancel2" style="margin-bottom:14px;">Annuler</button>
+    <details>
+      <summary style="color:var(--ink-soft);font-size:12.5px;cursor:pointer;">Texte brut détecté (pour signaler un problème)</summary>
+      <textarea readonly style="width:100%;height:140px;margin-top:8px;font-size:11px;font-family:monospace;border:1px solid var(--border);border-radius:8px;padding:8px;background:#fff;">${lastReceiptRawText.replace(/</g,"&lt;")}</textarea>
+    </details>
   `);
 
   $$('[data-role="receipt-check"]').forEach(el=>{
