@@ -1069,8 +1069,8 @@ let receiptCandidates = [];
 function openReceiptScan(){
   openSheet(`
     <h2>Scanner un ticket de caisse</h2>
-    <p style="color:var(--ink-soft);font-size:13.5px;margin-top:-8px;">Prends une photo du ticket, ou choisis-en une déjà enregistrée dans ta galerie. La lecture automatique n'est pas parfaite : tu pourras vérifier et corriger avant de valider.</p>
-    <input type="file" id="receipt-file-input" accept="image/*" style="margin:14px 0;width:100%;">
+    <p style="color:var(--ink-soft);font-size:13.5px;margin-top:-8px;">Prends une photo, choisis une image dans ta galerie, ou importe un PDF. La lecture automatique n'est pas parfaite : tu pourras vérifier et corriger avant de valider.</p>
+    <input type="file" id="receipt-file-input" accept="image/*,application/pdf" style="margin:14px 0;width:100%;">
     <div id="receipt-status"></div>
     <button class="btn btn-secondary btn-block" id="receipt-cancel">Annuler</button>
   `);
@@ -1079,6 +1079,30 @@ function openReceiptScan(){
     const file = e.target.files[0];
     if(!file) return;
     await runReceiptOCR(file);
+  });
+}
+
+async function pdfToImageBlob(file){
+  if(!window.pdfjsLib){
+    await new Promise((resolve, reject)=>{
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  }
+  const buffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2.5 });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  return new Promise((resolve, reject)=>{
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Conversion du PDF impossible")), "image/png");
   });
 }
 
@@ -1121,7 +1145,13 @@ async function runReceiptOCR(file){
   }
 
   try{
-    const processed = await upscaleImage(file).catch(()=> file);
+    let imageFile = file;
+    if(file.type === "application/pdf"){
+      statusZone.innerHTML = `<div class="loader"></div><p style="text-align:center;color:var(--ink-soft);font-size:13px;">Conversion du PDF…</p>`;
+      imageFile = await pdfToImageBlob(file);
+      statusZone.innerHTML = `<div class="loader"></div><p style="text-align:center;color:var(--ink-soft);font-size:13px;">Analyse du ticket en cours… ça peut prendre 10 à 20 secondes.</p>`;
+    }
+    const processed = await upscaleImage(imageFile).catch(()=> imageFile);
     const result = await Tesseract.recognize(processed, "fra");
     const text = result.data.text || "";
 
@@ -1201,7 +1231,7 @@ function parseReceiptLines(text, rayonMap = {}){
     let nom = line.slice(0, last.index).trim();
     nom = nom.replace(/^\d+\s*[xX]\s*/, "").replace(/[*']/g, "").trim();
     if(nom.length < 2) continue;
-    if(!/[a-zA-ZÀ-ÿ]/.test(nom)) continue; // doit contenir au moins une lettre
+    if(!/[a-zA-ZÀ-ÿ]{2,}/.test(nom)) continue; // doit contenir un vrai mot, pas une lettre isolée
 
     candidates.push({ nom, prix: last[0].replace(",", "."), categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true });
   }
