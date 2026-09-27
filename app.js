@@ -1207,7 +1207,10 @@ function parseReceiptLines(text, rayonMap = {}){
   const candidates = [];
   let currentCatId = null;
   let currentRayonTexte = null;
-  for(const line of lines){
+  const qtyLineRegex = /^(\d+)\s*[xX]\s*\d{1,4}[,.]\d{2}/;
+
+  for(let i = 0; i < lines.length; i++){
+    const line = lines[i];
     if(stopPatterns.some(re => re.test(line))) break;
 
     // Ligne de rayon (ex: ">> Epicerie sucree") : on retient la catégorie
@@ -1225,7 +1228,30 @@ function parseReceiptLines(text, rayonMap = {}){
     // dernier : sur ce genre de ticket, un chiffre de taux de TVA isolé
     // (ex: "6", "8") traîne souvent juste après le vrai prix.
     const matches = [...line.matchAll(/\d{1,4}[,.]\d{2}/g)];
-    if(!matches.length) continue;
+
+    if(!matches.length){
+      // Ligne sans prix : peut-être le nom d'un article acheté en
+      // plusieurs exemplaires, dont le prix est sur la ligne suivante
+      // (ex: "2 X 1,49€        2,98   8"). On regarde la ligne d'après.
+      let nom = line.replace(/^[-*]\s*/, "").trim();
+      if(nom.length >= 2 && /[a-zA-ZÀ-ÿ]{2,}/.test(nom)){
+        const nextLine = lines[i+1];
+        const qm = nextLine && nextLine.match(qtyLineRegex);
+        if(qm){
+          const qtyMatches = [...nextLine.matchAll(/\d{1,4}[,.]\d{2}/g)];
+          if(qtyMatches.length){
+            const lastQ = qtyMatches[qtyMatches.length - 1];
+            candidates.push({
+              nom, prix: lastQ[0].replace(",", "."), quantite: parseInt(qm[1]) || 1,
+              categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true
+            });
+            i++; // la ligne de quantité vient d'être consommée
+          }
+        }
+      }
+      continue;
+    }
+
     const last = matches[matches.length - 1];
 
     let nom = line.slice(0, last.index).trim();
@@ -1233,7 +1259,24 @@ function parseReceiptLines(text, rayonMap = {}){
     if(nom.length < 2) continue;
     if(!/[a-zA-ZÀ-ÿ]{2,}/.test(nom)) continue; // doit contenir un vrai mot, pas une lettre isolée
 
-    candidates.push({ nom, prix: last[0].replace(",", "."), categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true });
+    const cand = { nom, prix: last[0].replace(",", "."), quantite: 1, categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true };
+
+    // Si la ligne suivante n'est qu'un rappel "N X prix unitaire" sans
+    // nouveau total (le total est déjà sur cette ligne-ci), on récupère
+    // juste la quantité et on saute cette ligne de rappel.
+    const nextLine = lines[i+1];
+    if(nextLine){
+      const qm = nextLine.match(qtyLineRegex);
+      if(qm){
+        const qtyMatches = [...nextLine.matchAll(/\d{1,4}[,.]\d{2}/g)];
+        if(qtyMatches.length === 1){
+          cand.quantite = parseInt(qm[1]) || 1;
+          i++;
+        }
+      }
+    }
+
+    candidates.push(cand);
   }
   return candidates;
 }
@@ -1248,6 +1291,7 @@ function renderReceiptReview(){
           <div style="display:flex;align-items:center;gap:12px;">
             <div class="checkbox checked" data-idx="${i}" data-role="receipt-check">✓</div>
             <input type="text" value="${c.nom.replace(/"/g,"&quot;")}" data-idx="${i}" data-role="receipt-nom" style="flex:1;border:none;background:none;font-weight:700;padding:4px;font-family:inherit;font-size:14px;">
+            <input type="number" min="1" value="${c.quantite||1}" data-idx="${i}" data-role="receipt-qte" title="Quantité" style="width:44px;text-align:center;border:1px solid var(--border);border-radius:8px;padding:6px 2px;font-size:13px;">
             <div class="qty-tag">${c.prix} €</div>
           </div>
           <select data-idx="${i}" data-role="receipt-cat" style="margin-left:36px;font-size:12.5px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--ink-soft);">${categorieOptionsHTML(c.categorieId)}</select>
@@ -1269,6 +1313,9 @@ function renderReceiptReview(){
   });
   $$('[data-role="receipt-nom"]').forEach(el=>{
     el.addEventListener("input", ()=>{ receiptCandidates[el.dataset.idx].nom = el.value; });
+  });
+  $$('[data-role="receipt-qte"]').forEach(el=>{
+    el.addEventListener("input", ()=>{ receiptCandidates[el.dataset.idx].quantite = parseInt(el.value) || 1; });
   });
   $$('[data-role="receipt-cat"]').forEach(el=>{
     el.addEventListener("change", async ()=>{
@@ -1297,9 +1344,10 @@ async function confirmReceiptImport(){
 
   for(const c of toAdd){
     const nomPropre = c.nom.trim();
+    const qte = c.quantite || 1;
     const existing = produits.find(p => p.nom.toLowerCase() === nomPropre.toLowerCase());
     if(existing){
-      await appliquerMouvement(existing, 1, "ticket");
+      await appliquerMouvement(existing, qte, "ticket");
     } else {
       const { data: prod, error } = await sb.from("produits").insert({
         foyer_id: currentFoyer.id,
@@ -1309,9 +1357,9 @@ async function confirmReceiptImport(){
         seuil_alerte: 1
       }).select().single();
       if(!error){
-        await sb.from("stock").insert({ produit_id: prod.id, quantite_actuelle: 1 });
+        await sb.from("stock").insert({ produit_id: prod.id, quantite_actuelle: qte });
         await sb.from("historique_mouvements").insert({
-          produit_id: prod.id, type: "ajout", quantite: 1, source: "ticket", user_id: currentUser.id
+          produit_id: prod.id, type: "ajout", quantite: qte, source: "ticket", user_id: currentUser.id
         });
       }
     }
