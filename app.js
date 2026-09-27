@@ -1209,7 +1209,7 @@ function parseReceiptLines(text, rayonMap = {}){
   const candidates = [];
   let currentCatId = null;
   let currentRayonTexte = null;
-  const qtyLineRegex = /^(\d+)\s*[xX]\s*\d{1,4}[,.]\d{2}/;
+  const qtyLineRegex = /^(\d{1,2})\s*[xX]+/;
 
   for(let i = 0; i < lines.length; i++){
     const line = lines[i];
