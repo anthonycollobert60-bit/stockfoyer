@@ -761,6 +761,10 @@ function openScanner(){
     <h2>Scanner un produit</h2>
     <div id="scanner-view"></div>
     <p style="text-align:center;color:var(--ink-soft);font-size:13px;">Visez le code-barres avec la caméra.</p>
+    <div class="row-2" style="margin:10px 0;">
+      <button class="btn btn-secondary btn-block" id="scanner-torch">💡 Torche</button>
+      <button class="btn btn-secondary btn-block" id="scanner-manuel">⌨️ Saisir le code</button>
+    </div>
     <button class="btn btn-secondary btn-block" id="scanner-cancel">Annuler</button>
   `);
   if(!window.Html5Qrcode){
@@ -772,19 +776,57 @@ function openScanner(){
     startScanner();
   }
   $("#scanner-cancel").addEventListener("click", stopScannerAndClose);
+  $("#scanner-manuel").addEventListener("click", openManualBarcodeEntry);
+  $("#scanner-torch").addEventListener("click", toggleTorch);
+}
+
+let torchOn = false;
+async function toggleTorch(){
+  if(!html5QrCode) return;
+  try{
+    torchOn = !torchOn;
+    await html5QrCode.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+  }catch(e){
+    torchOn = false;
+    toast("Torche non disponible sur cet appareil.");
+  }
+}
+
+function openManualBarcodeEntry(){
+  openSheet(`
+    <h2>Saisir le code-barres</h2>
+    <div class="field"><label>Code-barres (chiffres sous le code)</label><input id="manual-barcode" type="text" inputmode="numeric" placeholder="Ex : 3017620422003"></div>
+    <button class="btn btn-primary btn-block" id="manual-barcode-submit">Valider</button>
+  `);
+  $("#manual-barcode-submit").addEventListener("click", ()=>{
+    const code = $("#manual-barcode").value.trim();
+    if(!code){ toast("Entre un code-barres."); return; }
+    onBarcodeDetected(code);
+  });
 }
 
 function startScanner(){
   html5QrCode = new Html5Qrcode("scanner-view");
+  const config = {
+    fps: 12,
+    qrbox: { width: 300, height: 180 },
+    videoConstraints: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    },
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+  };
   html5QrCode.start(
     { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 240, height: 140 } },
+    config,
     onBarcodeDetected,
     ()=>{}
   ).catch(()=> toast("Impossible d'accéder à la caméra."));
 }
 
 function stopScannerAndClose(){
+  torchOn = false;
   if(html5QrCode){
     html5QrCode.stop().then(()=>{ html5QrCode=null; closeSheet(); }).catch(()=>closeSheet());
   } else {
@@ -793,7 +835,7 @@ function stopScannerAndClose(){
 }
 
 async function onBarcodeDetected(code){
-  if(html5QrCode){ try{ await html5QrCode.stop(); }catch(e){} html5QrCode = null; }
+  if(html5QrCode){ try{ await html5QrCode.stop(); }catch(e){} html5QrCode = null; torchOn = false; }
 
   const existant = produits.find(p => p.code_barres === code);
   if(existant){
@@ -819,18 +861,42 @@ async function onBarcodeDetected(code){
 }
 
 function openQuickStock(p){
-  const step = p.unite === "pièce" ? 1 : (p.unite === "kg" || p.unite === "L" ? 0.5 : 50);
   openSheet(`
-    <h2>${p.nom}</h2>
+    <h2>Article reconnu</h2>
     <p style="color:var(--ink-soft);margin-top:-8px;">Stock actuel : <b>${formatQty(p.quantite_actuelle)} ${p.unite}</b></p>
-    <div class="row-2" style="margin:16px 0;">
-      <button class="btn btn-primary btn-block" id="qs-plus">+ Ajouter ${step} ${p.unite}</button>
-      <button class="btn btn-danger btn-block" id="qs-minus">– Retirer ${step} ${p.unite}</button>
+    <div class="field"><label>Nom</label><input id="qs-nom" type="text" value="${p.nom.replace(/"/g,"&quot;")}"></div>
+    <div class="field"><label>Quantité à ajouter ou retirer</label><input id="qs-qte" type="number" step="0.1" min="0" value="1"></div>
+    <div class="row-2" style="margin-bottom:14px;">
+      <button class="btn btn-primary btn-block" id="qs-plus">+ Ajouter</button>
+      <button class="btn btn-danger btn-block" id="qs-minus">– Retirer</button>
     </div>
     <button class="btn btn-secondary btn-block" id="qs-close">Fermer</button>
   `);
-  $("#qs-plus").addEventListener("click", async ()=>{ await appliquerMouvement(p, step, "scan"); closeSheet(); toast("Stock mis à jour ✅"); });
-  $("#qs-minus").addEventListener("click", async ()=>{ await appliquerMouvement(p, -step, "scan"); closeSheet(); toast("Stock mis à jour ✅"); });
+
+  async function saveNomSiChange(){
+    const nouveauNom = $("#qs-nom").value.trim();
+    if(nouveauNom && nouveauNom !== p.nom){
+      await sb.from("produits").update({ nom: nouveauNom }).eq("id", p.id);
+      p.nom = nouveauNom;
+    }
+  }
+
+  $("#qs-plus").addEventListener("click", async ()=>{
+    const qte = parseFloat($("#qs-qte").value) || 0;
+    if(qte <= 0){ toast("Entre une quantité."); return; }
+    await saveNomSiChange();
+    await appliquerMouvement(p, qte, "scan");
+    closeSheet();
+    toast("Stock mis à jour ✅");
+  });
+  $("#qs-minus").addEventListener("click", async ()=>{
+    const qte = parseFloat($("#qs-qte").value) || 0;
+    if(qte <= 0){ toast("Entre une quantité."); return; }
+    await saveNomSiChange();
+    await appliquerMouvement(p, -qte, "scan");
+    closeSheet();
+    toast("Stock mis à jour ✅");
+  });
   $("#qs-close").addEventListener("click", closeSheet);
 }
 
@@ -1162,6 +1228,15 @@ async function runReceiptOCR(file){
     (appris || []).forEach(r => { rayonMap[r.rayon_texte.toLowerCase()] = r.categorie_id; });
 
     receiptCandidates = parseReceiptLines(text, rayonMap);
+
+    const { data: aliasRows } = await sb.from("article_aliases")
+      .select("nom_brut, nom_corrige").eq("foyer_id", currentFoyer.id);
+    const aliasMap = {};
+    (aliasRows || []).forEach(a => { aliasMap[a.nom_brut.toLowerCase()] = a.nom_corrige; });
+    receiptCandidates.forEach(c => {
+      const appris = aliasMap[c.rawNom.toLowerCase()];
+      if(appris) c.nom = appris;
+    });
     lastReceiptRawText = text;
     renderReceiptReview();
   }catch(e){
@@ -1173,7 +1248,7 @@ function guessCategorieFromHeader(headerText){
   const t = headerText.toLowerCase();
   const rules = [
     { nom: "Épicerie sucrée", kw: ["sucree", "sucrée"] },
-    { nom: "Boissons", kw: ["boisson"] },
+    { nom: "Boissons", kw: ["boisson", "liquide"] },
     { nom: "Fruits & légumes", kw: ["fruit", "legume", "légume"] },
     { nom: "Frais (lait, œufs...)", kw: ["cremerie", "crèmerie", "laitier", "fromage", "charcuterie", "boucherie", "volaille", "poissonnerie", "traiteur", "oeuf", "œuf"] },
     { nom: "Surgelés", kw: ["surgele", "surgelé"] },
@@ -1244,7 +1319,7 @@ function parseReceiptLines(text, rayonMap = {}){
           if(qtyMatches.length){
             const lastQ = qtyMatches[qtyMatches.length - 1];
             candidates.push({
-              nom, prix: lastQ[0].replace(",", "."), quantite: parseInt(qm[1]) || 1,
+              nom, rawNom: nom, prix: lastQ[0].replace(",", "."), quantite: parseInt(qm[1]) || 1,
               categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true
             });
             i++; // la ligne de quantité vient d'être consommée
@@ -1261,7 +1336,7 @@ function parseReceiptLines(text, rayonMap = {}){
     if(nom.length < 2) continue;
     if(!/[a-zA-ZÀ-ÿ]{2,}/.test(nom)) continue; // doit contenir un vrai mot, pas une lettre isolée
 
-    const cand = { nom, prix: last[0].replace(",", "."), quantite: 1, categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true };
+    const cand = { nom, rawNom: nom, prix: last[0].replace(",", "."), quantite: 1, categorieId: currentCatId, rayonTexte: currentRayonTexte, coche: true };
 
     // Si la ligne suivante n'est qu'un rappel "N X prix unitaire" sans
     // nouveau total (le total est déjà sur cette ligne-ci), on récupère
@@ -1351,6 +1426,15 @@ async function confirmReceiptImport(){
   for(const c of toAdd){
     const nomPropre = c.nom.trim();
     const qte = c.quantite || 1;
+
+    if(c.rawNom && nomPropre.toLowerCase() !== c.rawNom.toLowerCase()){
+      await sb.from("article_aliases").upsert({
+        foyer_id: currentFoyer.id,
+        nom_brut: c.rawNom.toLowerCase(),
+        nom_corrige: nomPropre
+      }, { onConflict: "foyer_id,nom_brut" });
+    }
+
     const existing = produits.find(p => p.nom.toLowerCase() === nomPropre.toLowerCase());
     if(existing){
       await appliquerMouvement(existing, qte, "ticket");
