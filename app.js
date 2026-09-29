@@ -410,9 +410,13 @@ function renderStock(){
   let html = "";
   for(const cat of categories){
     const list = byCat[cat.id];
-    if(!list || !list.length) continue;
+    const estCatBebe = bebeCat && cat.id === bebeCat.id;
+    if((!list || !list.length) && !(estCatBebe && showDiaper)) continue;
     html += `<div class="cat-group"><div class="cat-label">${cat.icone} ${cat.nom}</div>`;
-    for(const p of list) html += prodCardHTML(p);
+    if(list) for(const p of list) html += prodCardHTML(p);
+    if(estCatBebe && showDiaper){
+      for(const d of diaperStock) html += diaperCardHTML(d);
+    }
     html += `</div>`;
   }
   if(byCat["none"]){
@@ -421,7 +425,9 @@ function renderStock(){
     html += `</div>`;
   }
 
-  if(showDiaper){
+  // Si aucune vraie catégorie "Bébé" n'existe dans StockFoyer, le stock du
+  // carnet bébé s'affiche dans sa propre section à part.
+  if(showDiaper && !bebeCat){
     html += `<div class="cat-group"><div class="cat-label">🍼 Carnet bébé</div>`;
     for(const d of diaperStock) html += diaperCardHTML(d);
     html += `</div>`;
@@ -1264,7 +1270,7 @@ function guessCategorieFromHeader(headerText){
     { nom: "Fruits & légumes", kw: ["fruit", "legume", "légume"] },
     { nom: "Frais (lait, œufs...)", kw: ["cremerie", "crèmerie", "laitier", "fromage", "charcuterie", "boucherie", "volaille", "poissonnerie", "traiteur", "oeuf", "œuf"] },
     { nom: "Surgelés", kw: ["surgele", "surgelé"] },
-    { nom: "Hygiène & entretien", kw: ["hygiene", "hygiène", "parfumerie", "cosmetique", "cosmétique", "entretien", "menager", "ménager", "droguerie", "beaute", "beauté"] },
+    { nom: "Hygiène & entretien", kw: ["hygiene", "hygiène", "parfumerie", "cosmetique", "cosmétique", "entretien", "menager", "ménager", "droguerie", "beaute", "beauté", "dph", "d.p.h"] },
     { nom: "Bébé", kw: ["bebe", "bébé", "puericulture", "puériculture"] },
     { nom: "Épicerie salée", kw: ["epicerie", "épicerie"] }
   ];
