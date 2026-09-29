@@ -760,7 +760,7 @@ function openScanner(){
   openSheet(`
     <h2>Scanner un produit</h2>
     <div id="scanner-view"></div>
-    <p style="text-align:center;color:var(--ink-soft);font-size:13px;">Visez le code-barres avec la caméra.</p>
+    <p style="text-align:center;color:var(--ink-soft);font-size:13px;">Visez le code-barres avec la caméra.<br>Sur une surface courbe ou brillante (canette...), aplatis légèrement l'emballage et évite les reflets.</p>
     <div class="row-2" style="margin:10px 0;">
       <button class="btn btn-secondary btn-block" id="scanner-torch">💡 Torche</button>
       <button class="btn btn-secondary btn-block" id="scanner-manuel">⌨️ Saisir le code</button>
@@ -806,7 +806,19 @@ function openManualBarcodeEntry(){
 }
 
 function startScanner(){
-  html5QrCode = new Html5Qrcode("scanner-view");
+  html5QrCode = new Html5Qrcode("scanner-view", {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.ITF
+    ],
+    verbose: false
+  });
   const config = {
     fps: 12,
     qrbox: { width: 300, height: 180 },
