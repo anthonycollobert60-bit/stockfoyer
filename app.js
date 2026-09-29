@@ -1441,6 +1441,8 @@ async function confirmReceiptImport(){
   if(!toAdd.length) return;
   toast(`Ajout de ${toAdd.length} article(s)…`);
 
+  const bebeCat = categories.find(c => c.nom === "Bébé");
+
   for(const c of toAdd){
     const nomPropre = c.nom.trim();
     const qte = c.quantite || 1;
@@ -1451,6 +1453,24 @@ async function confirmReceiptImport(){
         nom_brut: c.rawNom.toLowerCase(),
         nom_corrige: nomPropre
       }, { onConflict: "foyer_id,nom_brut" });
+    }
+
+    const estBebe = bebeCat && c.categorieId === bebeCat.id && currentFoyer.bebe_household_id;
+
+    if(estBebe){
+      const existingDiaper = diaperStock.find(d => d.size.toLowerCase() === nomPropre.toLowerCase());
+      if(existingDiaper){
+        await sb.from("diaper_stock").update({ quantity: existingDiaper.quantity + qte }).eq("id", existingDiaper.id);
+      } else {
+        await sb.from("diaper_stock").insert({
+          household_id: currentFoyer.bebe_household_id,
+          child_id: currentFoyer.bebe_child_id,
+          category: null,
+          size: nomPropre,
+          quantity: qte
+        });
+      }
+      continue;
     }
 
     const existing = produits.find(p => p.nom.toLowerCase() === nomPropre.toLowerCase());
